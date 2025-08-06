@@ -9,53 +9,60 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-test:
-    # Use a build matrix to run the job on all three major platforms.
-    # macos-14 is the latest Apple Silicon (ARM) runner.
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
-
-    # Run on the OS specified by the current matrix configuration.
-    runs-on: ${{ matrix.os }}
-
+  ##############################################################################
+  # Build and Test on Linux (Ubuntu)
+  ##############################################################################
+  build-linux:
+    name: Build on Ubuntu
+    runs-on: ubuntu-latest
     steps:
-      # Step 1: Check out repository code.
       - name: Check out repository
         uses: actions/checkout@v4
-        
-      # Step 2: Install and set up latest LLVM/Clang on macOS using Homebrew.
-      # This approach is far more robust than relying on third-party actions.
-      - name: Install latest Clang on macOS via Homebrew
-        if: matrix.os == 'macos-14'
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
+      - name: Build Project
+        run: cmake --build build
+      - name: Run Tests
+        run: ctest --test-dir build --verbose
+
+  ##############################################################################
+  # Build and Test on macOS
+  ##############################################################################
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-14 # Apple Silicon (ARM)
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install latest Clang via Homebrew
         run: |
-          # Use the platform's native package manager to install the latest llvm toolchain.
           brew install llvm
-          # Set the CC and CXX environment variables for subsequent steps.
-          # This tells CMake exactly which compiler to use, overriding the system default.
-          # We write to GITHUB_ENV so these variables are available to all following steps.
           echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
-
-      # Step 3: Configure the project using CMake.
-      # On macOS, CMake will now use the Clang we installed via Homebrew because
-      # the CC and CXX environment variables are set.
       - name: Configure CMake
-        run: >
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DSPSC_QUEUE_BUILD_TESTS=ON
-          -DSPSC_QUEUE_BUILD_EXAMPLES=OFF
-          -DSPSC_QUEUE_BUILD_BENCHMARKS=OFF
-
-      # Step 4: Build the project.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
       - name: Build Project
         run: cmake --build build --config Debug
-
-      # Step 5: Run the tests.
       - name: Run Tests
         run: |
           cd build
           ctest -C Debug --verbose
 
+  ##############################################################################
+  # Build and Test on Windows
+  ##############################################################################
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
+      - name: Build Project
+        run: cmake --build build --config Debug
+      - name: Run Tests
+        run: |
+          cd build
+          ctest -C Debug --verbose
 
