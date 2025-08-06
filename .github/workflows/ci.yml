@@ -11,9 +11,8 @@ on:
 jobs:
   build-and-test:
     # Use a build matrix to run the job on all three major platforms.
+    # macos-14 is the latest Apple Silicon (ARM) runner.
     strategy:
-      # We must specify a specific macOS runner version. 'macos-13' is Intel,
-      # 'macos-14' is Apple Silicon (ARM). Let's test on the latest ARM.
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
 
@@ -24,21 +23,23 @@ jobs:
       # Step 1: Check out repository code.
       - name: Check out repository
         uses: actions/checkout@v4
-
-      # Step 2: Install latest LLVM/Clang, but ONLY for the macOS job.
-      # We use a different, more reliable community action for this.
-      # It correctly handles installing the toolchain and setting the necessary
-      # environment variables (CC and CXX) for CMake to find it.
-      - name: Install latest Clang on macOS
+        
+      # Step 2: Install and set up latest LLVM/Clang on macOS using Homebrew.
+      # This approach is far more robust than relying on third-party actions.
+      - name: Install latest Clang on macOS via Homebrew
         if: matrix.os == 'macos-14'
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "17" # Requesting Clang version 17
-          directory: ${{ runner.tool_cache }}/llvm
+        run: |
+          # Use the platform's native package manager to install the latest llvm toolchain.
+          brew install llvm
+          # Set the CC and CXX environment variables for subsequent steps.
+          # This tells CMake exactly which compiler to use, overriding the system default.
+          # We write to GITHUB_ENV so these variables are available to all following steps.
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
 
       # Step 3: Configure the project using CMake.
-      # On macOS, CMake will now automatically pick up the new Clang we just
-      # installed because the previous step sets the required environment variables.
+      # On macOS, CMake will now use the Clang we installed via Homebrew because
+      # the CC and CXX environment variables are set.
       - name: Configure CMake
         run: >
           cmake -S . -B build
@@ -48,15 +49,13 @@ jobs:
           -DSPSC_QUEUE_BUILD_BENCHMARKS=OFF
 
       # Step 4: Build the project.
-      # The '--config Debug' flag is crucial for Visual Studio on Windows and
-      # is safely ignored by Makefiles on Linux and macOS.
       - name: Build Project
         run: cmake --build build --config Debug
 
       # Step 5: Run the tests.
-      # The '-C Debug' flag is necessary for ctest with multi-config generators.
       - name: Run Tests
         run: |
           cd build
           ctest -C Debug --verbose
+
 
