@@ -8,7 +8,7 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 
 -   **Lock-Free:** Uses `std::atomic` with correct memory ordering to ensure thread safety without mutexes, preventing deadlocks and priority inversion issues.
 -   **Single-Producer, Single-Consumer (SPSC):** Optimized for the common two-thread communication pattern.
--   **Modern C++23:** Uses modern features like `std::span` and `std::has_single_bit`.
+-   **Modern C++:** Uses modern features like `std::span` and `std::has_single_bit`.
 -   **Header-Only:** The queue is provided as a single header file without any external dependences for easy integration.
 -   **Cache-Friendly:** Atomic read/write pointers are aligned to cache lines to prevent "false sharing".
 -   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
@@ -136,7 +136,7 @@ Simply copy the `include/` directory from this project into your project's sourc
 add_executable(MyAwesomeApp src/main.cpp)
 
 # Add the path to the copied headers
-target_include_directories(MyAwesomeApp PRIVATE external/LockFreeSpscQueue/include)```
+target_include_directories(MyAwesomeApp PRIVATE external/LockFreeSpscQueue/include)
 ```
 
 ## (Advanced) Performance Benchmarks
