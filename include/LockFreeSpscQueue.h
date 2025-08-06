@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
+#include <functional>
 #include <span>
 #include <stdexcept>
 #include <bit>
