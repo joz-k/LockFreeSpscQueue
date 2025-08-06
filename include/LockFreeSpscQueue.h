@@ -395,7 +395,16 @@ private:
     #pragma GCC diagnostic ignored "-Winterference-size"
 #endif
     // Define a stable constant for the cache line size.
+    // This block provides a portable way to get the cache line size.
+    // It uses the C++17 standard constant if available, otherwise falls back
+    // to a sensible default. This handles toolchains (like the one on GitHub's
+    // older macOS runners) where the standard library might not be fully C++17-compliant.
+#ifdef __cpp_lib_hardware_interference_size
     static constexpr size_t CacheLineSize = std::hardware_destructive_interference_size;
+#else
+    static constexpr size_t CacheLineSize = 64;
+#endif
+
 #if defined(__GNUC__) && !defined(__clang__)
     #pragma GCC diagnostic pop
 #endif
