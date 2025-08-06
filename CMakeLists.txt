@@ -28,6 +28,14 @@ option(SPSC_QUEUE_BUILD_TESTS "Build the project's tests" ON)
 option(SPSC_QUEUE_BUILD_EXAMPLES "Build the project's examples" ON)
 option(SPSC_QUEUE_BUILD_BENCHMARKS "Build the project's benchmarks" OFF)
 
+# For MacOS
+if(APPLE AND (SPSC_QUEUE_BUILD_TESTS OR SPSC_QUEUE_BUILD_EXAMPLES OR SPSC_QUEUE_BUILD_BENCHMARKS))
+    # Enable experimental Clang stdlib features (for std::jthreads) when
+    # building tests, examples or benchmark
+    # As of Apple Clang version 17.0.0, this is still required
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
+endif ()
+
 if(SPSC_QUEUE_BUILD_TESTS)
     # Enable CTest if we're building any tests.
     enable_testing()
@@ -42,13 +50,6 @@ if(SPSC_QUEUE_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif()
 
-# For MacOS
-if (APPLE && (SPSC_QUEUE_BUILD_TESTS || SPSC_QUEUE_BUILD_EXAMPLES|| SPSC_QUEUE_BUILD_BENCHMARKS))
-    # Enable experimental Clang stdlib features (for std::jthreads) when
-    # building tests, examples or benchmark
-    # As of Apple Clang version 17.0.0, this is still required
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
-endif ()
 
 # --- Installation ---
 # This rule tells CMake to copy the 'include' directory to the destination
