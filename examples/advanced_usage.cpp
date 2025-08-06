@@ -2,11 +2,20 @@
 #include <vector>
 #include <thread>
 #include <random>
-#include <cassert>
 #include <string>
 #include <chrono>
 
 #include "LockFreeSpscQueue.h"
+
+// Helper `assert` which aborts also in the release builds
+#define always_assert(condition) \
+    do { \
+        if (!(condition)) { \
+            std::cerr << "Assertion failed: " << #condition \
+                      << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            std::abort(); \
+        } \
+    } while(0)
 
 // Utility to print a span for debugging
 template <typename SpanType>
@@ -34,14 +43,25 @@ void basic_usage()
                   << " items\n";
 
         // Copy data first
-        std::copy(data.begin(),
-                  data.begin() + write_scope.get_block1().size(),
-                  write_scope.get_block1().begin());
+        std::copy_n(data.begin(),
+                    write_scope.get_block1().size(),
+                    write_scope.get_block1().begin());
+
+        // An above `copy_n` is eqivalent to:
+        //     std::copy(data.begin(),
+        //               data.begin() + write_scope.get_block1().size(),
+        //               write_scope.get_block1().begin());
 
         if (write_scope.get_block2().size() > 0) {
-            std::copy(data.begin() + write_scope.get_block1().size(),
-                      data.end(),
-                      write_scope.get_block2().begin());
+            std::copy_n(data.begin() + write_scope.get_block1().size(),
+                        write_scope.get_block2().size(),
+                        write_scope.get_block2().begin());
+
+            // An above `copy_n` is eqivalent to:
+            //      std::copy(data.begin() + write_scope.get_block1().size(),
+            //                data.begin() + write_scope.get_block1().size()
+            //                             + write_scope.get_block2().size(),
+            //                write_scope.get_block2().begin());
         }
 
         // Print spans after writing to show the actual data
@@ -69,7 +89,7 @@ void basic_usage()
         }
 
         // Verify
-        assert(result == data);
+        always_assert(result == data);
         std::cout << "Consumer: Read data matches input\n";
     }
 }
@@ -107,14 +127,14 @@ void stress_test()
                 item = value_dist(gen);
             }
 
-            std::copy(data.begin(),
-                      data.begin() + write_scope.get_block1().size(),
-                      write_scope.get_block1().begin());
+            std::copy_n(data.begin(),
+                        write_scope.get_block1().size(),
+                        write_scope.get_block1().begin());
 
             if (write_scope.get_block2().size() > 0) {
-                std::copy(data.begin() + write_scope.get_block1().size(),
-                          data.end(),
-                          write_scope.get_block2().begin());
+                std::copy_n(data.begin() + write_scope.get_block1().size(),
+                            write_scope.get_block2().size(),
+                            write_scope.get_block2().begin());
             }
 
             // Collect produced data for verification
@@ -188,8 +208,8 @@ void stress_test()
     consumer_thread.join();
 
     // Verify that consumed data matches produced data
-    assert(produced_data.size() == consumed_data.size());
-    assert(produced_data == consumed_data);
+    always_assert(produced_data.size() == consumed_data.size());
+    always_assert(produced_data == consumed_data);
     std::cout << "Stress test passed: Produced and consumed data match\n";
 }
 
@@ -203,7 +223,7 @@ void edge_case_test()
     // Fill the queue
     {
         auto write_scope = queue.prepare_write(4);
-        assert(write_scope.get_items_written() == 4);
+        always_assert(write_scope.get_items_written() == 4);
         std::fill(write_scope.get_block1().begin(), write_scope.get_block1().end(), 42);
         if (write_scope.get_block2().size() > 0) {
             std::fill(write_scope.get_block2().begin(), write_scope.get_block2().end(), 42);
@@ -214,14 +234,14 @@ void edge_case_test()
     // Try to write to a full queue
     {
         auto write_scope = queue.prepare_write(1);
-        assert(write_scope.get_items_written() == 0);
+        always_assert(write_scope.get_items_written() == 0);
         std::cout << "Edge case: Write to full queue returned 0 items\n";
     }
 
     // Read all items
     {
         auto read_scope = queue.prepare_read(4);
-        assert(read_scope.get_items_read() == 4);
+        always_assert(read_scope.get_items_read() == 4);
 
         std::vector<int> result(read_scope.get_items_read());
         std::copy(read_scope.get_block1().begin(),
@@ -234,14 +254,14 @@ void edge_case_test()
                       result.begin() + read_scope.get_block1().size());
         }
 
-        assert(std::all_of(result.begin(), result.end(), [](int x) { return x == 42; }));
+        always_assert(std::all_of(result.begin(), result.end(), [](int x) { return x == 42; }));
         std::cout << "Edge case: Read 4 items from full queue\n";
     }
 
     // Try to read from an empty queue
     {
         auto read_scope = queue.prepare_read(1);
-        assert(read_scope.get_items_read() == 0);
+        always_assert(read_scope.get_items_read() == 0);
         std::cout << "Edge case: Read from empty queue returned 0 items\n";
     }
 }
