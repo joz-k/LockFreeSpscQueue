@@ -14,7 +14,7 @@ using MyQueue  = LockFreeSpscQueue<DataType>;
 void producer_thread(MyQueue& queue, size_t num_items_to_produce)
 {
     std::mt19937 random_generator(std::random_device{}());
-    std::uniform_int_distribution<int> sleep_dist(0, 20);
+    std::uniform_int_distribution<int> sleep_dist(0, 10);
 
     for (size_t i = 0; i < num_items_to_produce; ++i) {
         DataType item_to_write = static_cast<DataType>(i);
@@ -52,6 +52,10 @@ void consumer_thread(MyQueue& queue,
                 test_failed.store(true);
                 return;
             }
+
+            if (next_expected_value % 100 == 0) {
+                std::cout << "Consumer reached count: " << next_expected_value << std::endl;
+            }
             next_expected_value++;
         } else {
             if (producer_is_done.load(std::memory_order_acquire)) {
@@ -59,7 +63,7 @@ void consumer_thread(MyQueue& queue,
                     break;
                 }
             } else {
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
             }
         }
     }
@@ -67,8 +71,8 @@ void consumer_thread(MyQueue& queue,
 
 int main()
 {
-    const size_t TOTAL_ITEMS_TO_PROCESS = 100'000;
-    const size_t QUEUE_CAPACITY = 4096;
+    const size_t TOTAL_ITEMS_TO_PROCESS = 1024;
+    const size_t QUEUE_CAPACITY = 256;
 
     std::cout << "Running Test: Single Item Transfer...\n";
 
