@@ -1,3 +1,7 @@
+[![CI - Test Ubuntu/Linux](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/linux.yml/badge.svg)](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/linux.yml)
+[![CI - Test macOS](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/macos.yml/badge.svg)](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/macos.yml)
+[![CI - Test Windows](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/windows.yml/badge.svg)](https://github.com/joz-k/LockFreeSpscQueue/actions/workflows/windows.yml)
+
 # C++23 Lock-Free SPSC Queue
 
 A high-performance, single-producer, single-consumer (SPSC) queue implemented in modern C++23.
