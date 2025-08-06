@@ -24,11 +24,22 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      # Step 1: Check out repository code.
+      # Step 1: Check out repository code. This is cross-platform.
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Step 2: Configure the project using CMake.
+      # Step 2: Install latest Clang, but ONLY for the macOS job.
+      # This step uses a marketplace action to download and set up a specific
+      # version of Clang, overriding the outdated system default.
+      # The 'if' condition ensures this step is skipped on Windows and Linux.
+      - name: Install latest Clang on macOS
+        if: runner.os == 'macOS'
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: 17 # We explicitly request Clang 17
+          platform: macos
+
+      # Step 3: Configure the project using CMake.
       # This step is now run on each OS. The commands are cross-platform.
       # We use a Debug build for tests as it provides more info on failures.
       - name: Configure CMake
@@ -39,7 +50,7 @@ jobs:
           -DSPSC_QUEUE_BUILD_EXAMPLES=OFF
           -DSPSC_QUEUE_BUILD_BENCHMARKS=OFF
 
-      # Step 3: Build the project.
+      # Step 4: Build the project.
       # The '--config Debug' flag is crucial for multi-configuration generators
       # like Visual Studio on Windows. It is ignored by single-configuration
       # generators like Makefiles on Linux and macOS, making this command
@@ -47,7 +58,7 @@ jobs:
       - name: Build Project
         run: cmake --build build --config Debug
 
-      # Step 4: Run the tests.
+      # Step 5: Run the tests.
       # The '-C Debug' flag tells ctest to look for test executables in the
       # 'Debug' configuration subdirectory, which is necessary on Windows.
       # Like the build command, this is safely ignored on other platforms.
