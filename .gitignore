@@ -1,0 +1,23 @@
+# CMake and build files
+/build/
+/build-*/
+/install/
+CMakeCache.txt
+CMakeLists.txt.user
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.suo
+
+# Compiled files
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+*.out
+*.app
+
+# Other
+.DS_Store
