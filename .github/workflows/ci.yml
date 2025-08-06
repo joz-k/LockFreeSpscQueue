@@ -1,0 +1,58 @@
+# The name of the workflow, displayed in the "Actions" tab.
+name: C++ CI (Multi-Platform)
+
+# Triggers for the workflow.
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    # --- The Build Matrix ---
+    # Multi-platform testing:
+    # The 'strategy' block tells GitHub Actions to run this job multiple times,
+    # once for each item in the 'os' list of the 'matrix'.
+    strategy:
+      matrix:
+        # We define the list of operating systems we want to test on.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    # The job will run on the operating system specified by the current matrix variable.
+    # For example, in the first run, this will be 'ubuntu-latest'.
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # Step 1: Check out repository code.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Step 2: Configure the project using CMake.
+      # This step is now run on each OS. The commands are cross-platform.
+      # We use a Debug build for tests as it provides more info on failures.
+      - name: Configure CMake
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSPSC_QUEUE_BUILD_TESTS=ON
+          -DSPSC_QUEUE_BUILD_EXAMPLES=OFF
+          -DSPSC_QUEUE_BUILD_BENCHMARKS=OFF
+
+      # Step 3: Build the project.
+      # The '--config Debug' flag is crucial for multi-configuration generators
+      # like Visual Studio on Windows. It is ignored by single-configuration
+      # generators like Makefiles on Linux and macOS, making this command
+      # robustly cross-platform.
+      - name: Build Project
+        run: cmake --build build --config Debug
+
+      # Step 4: Run the tests.
+      # The '-C Debug' flag tells ctest to look for test executables in the
+      # 'Debug' configuration subdirectory, which is necessary on Windows.
+      # Like the build command, this is safely ignored on other platforms.
+      - name: Run Tests
+        run: |
+          cd build
+          ctest -C Debug --verbose
+
