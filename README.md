@@ -173,7 +173,7 @@ This project uses CMake for building and CTest for running the test suite.
     # This command configures the project. By default, it will enable 
     # building the tests and examples since the corresponding CMake options default to ON.
     cmake -S . -B build
-    # Or if you want to use Ninja instaed of Make:
+    # Or if you want to use Ninja instead of Make:
     cmake -G Ninja -S . -B build
     ```
     If you wish to disable building tests or examples (e.g., for a quicker configuration), you can turn the options off from the command line:
