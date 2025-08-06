@@ -10,6 +10,7 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 -   **Single-Producer, Single-Consumer (SPSC):** Optimized for the common two-thread communication pattern.
 -   **Modern C++:** Uses modern features like `std::span` and `std::has_single_bit`.
 -   **Header-Only:** The queue is provided as a single header file without any external dependences for easy integration.
+-   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
 -   **Cache-Friendly:** Atomic read/write pointers are aligned to cache lines to prevent "false sharing".
 -   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
 -   **Tested:** Includes a comprehensive test suite built with CMake and CTest.
