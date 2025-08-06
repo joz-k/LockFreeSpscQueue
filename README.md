@@ -137,6 +137,7 @@ add_executable(MyAwesomeApp src/main.cpp)
 
 # Add the path to the copied headers
 target_include_directories(MyAwesomeApp PRIVATE external/LockFreeSpscQueue/include)```
+```
 
 ## (Advanced) Performance Benchmarks
 
