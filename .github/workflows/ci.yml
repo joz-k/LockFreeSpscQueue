@@ -1,7 +1,7 @@
 # The name of the workflow, displayed in the "Actions" tab.
 name: C++ CI (Multi-Platform)
 
-# Triggers for the workflow.
+# Triggers for the workflow (unchanged).
 on:
   push:
     branches: [ "main" ]
@@ -10,38 +10,35 @@ on:
 
 jobs:
   build-and-test:
-    # --- The Build Matrix ---
-    # Multi-platform testing:
-    # The 'strategy' block tells GitHub Actions to run this job multiple times,
-    # once for each item in the 'os' list of the 'matrix'.
+    # Use a build matrix to run the job on all three major platforms.
     strategy:
+      # We must specify a specific macOS runner version. 'macos-13' is Intel,
+      # 'macos-14' is Apple Silicon (ARM). Let's test on the latest ARM.
       matrix:
-        # We define the list of operating systems we want to test on.
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-14, windows-latest]
 
-    # The job will run on the operating system specified by the current matrix variable.
-    # For example, in the first run, this will be 'ubuntu-latest'.
+    # Run on the OS specified by the current matrix configuration.
     runs-on: ${{ matrix.os }}
 
     steps:
-      # Step 1: Check out repository code. This is cross-platform.
+      # Step 1: Check out repository code.
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Step 2: Install latest Clang, but ONLY for the macOS job.
-      # This step uses a marketplace action to download and set up a specific
-      # version of Clang, overriding the outdated system default.
-      # The 'if' condition ensures this step is skipped on Windows and Linux.
+      # Step 2: Install latest LLVM/Clang, but ONLY for the macOS job.
+      # We use a different, more reliable community action for this.
+      # It correctly handles installing the toolchain and setting the necessary
+      # environment variables (CC and CXX) for CMake to find it.
       - name: Install latest Clang on macOS
-        if: runner.os == 'macOS'
-        uses: egor-tensin/setup-clang@v1
+        if: matrix.os == 'macos-14'
+        uses: KyleMayes/install-llvm-action@v1
         with:
-          version: 17 # We explicitly request Clang 17
-          platform: macos
+          version: "17" # Requesting Clang version 17
+          directory: ${{ runner.tool_cache }}/llvm
 
       # Step 3: Configure the project using CMake.
-      # This step is now run on each OS. The commands are cross-platform.
-      # We use a Debug build for tests as it provides more info on failures.
+      # On macOS, CMake will now automatically pick up the new Clang we just
+      # installed because the previous step sets the required environment variables.
       - name: Configure CMake
         run: >
           cmake -S . -B build
@@ -51,17 +48,13 @@ jobs:
           -DSPSC_QUEUE_BUILD_BENCHMARKS=OFF
 
       # Step 4: Build the project.
-      # The '--config Debug' flag is crucial for multi-configuration generators
-      # like Visual Studio on Windows. It is ignored by single-configuration
-      # generators like Makefiles on Linux and macOS, making this command
-      # robustly cross-platform.
+      # The '--config Debug' flag is crucial for Visual Studio on Windows and
+      # is safely ignored by Makefiles on Linux and macOS.
       - name: Build Project
         run: cmake --build build --config Debug
 
       # Step 5: Run the tests.
-      # The '-C Debug' flag tells ctest to look for test executables in the
-      # 'Debug' configuration subdirectory, which is necessary on Windows.
-      # Like the build command, this is safely ignored on other platforms.
+      # The '-C Debug' flag is necessary for ctest with multi-config generators.
       - name: Run Tests
         run: |
           cd build
