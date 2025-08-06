@@ -1,0 +1,27 @@
+name: CI - Test macOS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install latest Clang via Homebrew
+        run: |
+          brew install llvm
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
+      - name: Build Project
+        run: cmake --build build --config Debug
+      - name: Run Tests
+        run: |
+          cd build
+          ctest -C Debug --verbose

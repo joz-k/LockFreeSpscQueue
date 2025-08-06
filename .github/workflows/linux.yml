@@ -1,0 +1,20 @@
+name: CI - Test Ubuntu/Linux
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
+      - name: Build Project
+        run: cmake --build build
+      - name: Run Tests
+        run: ctest --test-dir build --verbose

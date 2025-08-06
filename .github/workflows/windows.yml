@@ -1,0 +1,22 @@
+name: CI - Test Windows
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DSPSC_QUEUE_BUILD_TESTS=ON
+      - name: Build Project
+        run: cmake --build build --config Debug
+      - name: Run Tests
+        run: |
+          cd build
+          ctest -C Debug --verbose
