@@ -8,7 +8,7 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 
 -   **Lock-Free:** Uses `std::atomic` with correct memory ordering to ensure thread safety without mutexes, preventing deadlocks and priority inversion issues.
 -   **Single-Producer, Single-Consumer (SPSC):** Optimized for the common two-thread communication pattern.
--   **Modern C++:** Uses modern features like `std::span` and `std::has_single_bit`.
+-   **Modern C++:** Uses modern features like `std::span`.
 -   **Header-Only:** The queue is provided as a single header file without any external dependences for easy integration.
 -   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
 -   **Cache-Friendly:** Atomic read/write pointers are aligned to cache lines to prevent "false sharing".
@@ -156,7 +156,7 @@ This project uses CMake for building and CTest for running the test suite.
 
 ### Prerequisites
 
--   A C++23 compatible compiler (e.g., Clang 16+, GCC 13+).
+-   A C++23 compatible compiler (e.g., Clang 16+, GCC 13+, MSVC 19.44+).
 -   CMake (version 3.22 or newer).
 -   Git.
 
@@ -286,7 +286,18 @@ BM_QueueThroughput/4   0.011 ms  0.011 ms      66833 Items/s=777.743M/s
 BM_QueueThroughput/16  0.003 ms  0.003 ms     266026 Items/s=3.10748G/s
 BM_QueueThroughput/64  0.001 ms  0.001 ms    1049349 Items/s=12.3991G/s
 BM_QueueThroughput/256 0.000 ms  0.000 ms    2211341 Items/s=25.924G/s
-
 ```
 This output clearly shows how performance dramatically increases when transferring items in batches compared to one by one.
+
+## Disclaimers
+
+This code was only tested on x86_64 and ARM64 CPU architectures. I also did not try running it on operating systems other than Linux, macOS, and Windows.
+
+## Similar Projects
+
+* https://github.com/juce-framework/JUCE/blob/master/modules/juce_core/containers/juce_AbstractFifo.h
+* https://github.com/steinwurf/boost/tree/master/boost/lockfree
+* https://github.com/cameron314/readerwriterqueue
+* https://github.com/MayaPosch/LockFreeRingBuffer
+* https://github.com/facebook/folly/blob/main/folly/ProducerConsumerQueue.h
 
