@@ -2,6 +2,9 @@
 /build/
 /build-*/
 /install/
+/out/
+/.vs/
+/.vscode/
 CMakeCache.txt
 CMakeLists.txt.user
 *.vcxproj
