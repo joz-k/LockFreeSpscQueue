@@ -138,6 +138,10 @@ int main()
                     if (queue.get_num_items_ready() == 0) {
                         break;
                     }
+                } else {
+                    // Producer is still working, but the queue is empty.
+                    // Wait for a moment to prevent a high-CPU spin-loop.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
         }
