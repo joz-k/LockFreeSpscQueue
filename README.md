@@ -47,6 +47,105 @@ If we want to write 3 new items (`X, Y, Z`), there isn't a single contiguous blo
 
 This is why the API returns two blocks — it efficiently handles this wrap-around case without needing to shuffle memory.
 
+## Example Use
+
+Here is a complete, minimal example demonstrating the recommended batch-oriented usage. A producer thread sends several small batches of integers, and a consumer thread reads them as they become available. 
+
+```cpp
+#include "LockFreeSpscQueue.h"
+
+#include <iostream>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <numeric>
+
+int main()
+{
+    // 1. Define the capacity for our queue. MUST be a power of two.
+    const size_t QUEUE_CAPACITY = 128;
+
+    // 2. Create the data buffer that will be shared between threads.
+    std::vector<int> shared_data_buffer(QUEUE_CAPACITY);
+
+    // 3. Create the queue manager, giving it a non-owning view of our buffer.
+    LockFreeSpscQueue<int> queue(shared_data_buffer);
+
+    // 4. Create a flag to signal when the producer is finished.
+    std::atomic<bool> producer_is_done = false;
+
+    // 5. Start the producer and consumer threads.
+    //    std::jthread automatically joins on scope exit.
+    std::jthread producer([&]() {
+        std::cout << "Producer: Starting to send items in batches...\n";
+
+        // Send 5 batches of 4 items each.
+        for (int batch_num = 0; batch_num < 5; ++batch_num) {
+            // Prepare a local batch of data.
+            std::vector<int> local_batch(4);
+            std::iota(local_batch.begin(), local_batch.end(), batch_num * 4); // Fills with 0,1,2,3 then 4,5,6,7 etc.
+
+            std::cout << "Producer:   Attempting to send batch " << batch_num << " (items "
+                      << local_batch.front() << "..." << local_batch.back() << ")\n";
+
+            // Keep trying to write the entire batch until it succeeds.
+            size_t items_written = 0;
+            while (items_written < local_batch.size()) {
+                // Create a view of the remaining items in our local batch.
+                std::span<const int> sub_batch(local_batch.data() + items_written,
+                                               local_batch.size() - items_written);
+
+                // `try_write` will write as many items as it can and return the count.
+                items_written += queue.try_write(sub_batch.size(), [&](auto block1, auto block2) {
+                    std::copy_n(sub_batch.begin(), block1.size(), block1.begin());
+                    if (!block2.empty()) {
+                        std::copy_n(sub_batch.begin() + block1.size(), block2.size(), block2.begin());
+                    }
+                });
+                
+                // If the queue was full, `items_written` will not increase.
+                // Yield to give the consumer a chance to run.
+                if (items_written < local_batch.size()) {
+                    std::this_thread::yield();
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        std::cout << "Producer: Finished.\n";
+        producer_is_done.store(true, std::memory_order_release);
+    });
+
+    std::jthread consumer([&]() {
+        std::cout << "Consumer: Waiting for items...\n";
+        while (true) {
+            // Try to read a batch of up to 16 items at a time.
+            const size_t items_read = queue.try_read(16, [&](auto block1, auto block2) {
+                // Process all items in the first contiguous block.
+                for (int item : block1) {
+                    std::cout << "Consumer: Got  " << item << "\n";
+                }
+                // Process all items in the second (wrapped-around) block.
+                for (int item : block2) {
+                    std::cout << "Consumer: Got  " << item << "\n";
+                }
+            });
+
+            if (items_read == 0) {
+                // Queue was empty. If the producer is also done, we can exit.
+                if (producer_is_done.load(std::memory_order_acquire)) {
+                    // One final check to prevent a race condition.
+                    if (queue.get_num_items_ready() == 0) {
+                        break;
+                    }
+                }
+            }
+        }
+        std::cout << "Consumer: Finished.\n";
+    });
+}
+```
+
 ## How to Build and Run
 
 This project uses CMake for building and CTest for running the test suite.
