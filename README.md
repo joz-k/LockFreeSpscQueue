@@ -33,7 +33,7 @@ Imagine a buffer of size 8. `R` is the Read Index, `W` is the Write Index.
 [A|B|C|-|-|-|-|-]
 ```
 
-**3. The "Wrap-Around" Problem**
+**3. The "Wrap-Around" Problem:**
 Now, imagine the state is this, where `F` and `G` have been written, and items `a-e` have been read.
 ```
 -----------R-W
@@ -60,7 +60,7 @@ This project uses CMake for building and CTest for running the test suite.
 
 1.  **Clone the repository:**
     ```sh
-    git clone <your-repo-url>
+    git clone https://github.com/joz-k/LockFreeSpscQueue.git
     cd LockFreeSpscQueue
     ```
 
@@ -69,6 +69,8 @@ This project uses CMake for building and CTest for running the test suite.
     # This command configures the project. By default, it will enable 
     # building the tests and examples since the corresponding CMake options default to ON.
     cmake -S . -B build
+    # Or if you want to use Ninja instaed of Make:
+    cmake -G Ninja -S . -B build
     ```
     If you wish to disable building tests or examples (e.g., for a quicker configuration), you can turn the options off from the command line:
     ```sh
