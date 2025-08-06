@@ -399,17 +399,17 @@ private:
     // It uses the C++17 standard constant if available, otherwise falls back
     // to a sensible default. This handles toolchains (like the one on GitHub's
     // older macOS runners) where the standard library might not be fully C++17-compliant.
-//#if defined(__cpp_lib_hardware_interference_size) && !defined(__apple_build_version__)
+#if defined(__cpp_lib_hardware_interference_size) && !defined(__clang__)
     // This is the ideal path: the compiler and standard library are fully C++17-compliant.
     // We exclude Apple Clang because its libc++ can define the feature-test macro
     // without actually providing the constant, leading to a compilation error.
-//    static constexpr size_t CacheLineSize = std::hardware_destructive_interference_size;
-//#else
+    static constexpr size_t CacheLineSize = std::hardware_destructive_interference_size;
+#else
     // This is the fallback path for older compilers or for Apple Clang, where we
     // cannot trust the feature-test macro. 64 bytes is a safe and widely-used
     // default for modern hardware (x86-64, ARM).
     static constexpr size_t CacheLineSize = 64;
-//#endif
+#endif
 #if defined(__GNUC__) && !defined(__clang__)
     #pragma GCC diagnostic pop
 #endif
