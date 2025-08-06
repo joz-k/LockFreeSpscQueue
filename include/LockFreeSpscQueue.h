@@ -385,14 +385,29 @@ private:
 
     std::span<T> m_buffer;
 
+    // This block handles a GCC-specific warning about ABI stability.
+#if defined(__GNUC__) && !defined(__clang__)
+    // GCC 12+ warns that the value of hardware_destructive_interference_size
+    // can change with compiler flags, affecting ABI. As a header-only library,
+    // we assume consistent flags for a given build. This pragma silences the
+    // warning locally, allowing us to use the semantically correct standard constant.
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Winterference-size"
+#endif
+    // Define a stable constant for the cache line size.
+    static constexpr size_t CacheLineSize = std::hardware_destructive_interference_size;
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC diagnostic pop
+#endif
+
     // Ensure cache line alignment to prevent "false sharing". On modern CPUs,
     // memory is moved in cache lines. If m_write_pos (used by the producer) and
     // m_read_pos (used by the consumer) were to share a cache line, modifications
     // by one thread would invalidate the other thread's cache, causing significant
     // performance degradation. std::hardware_destructive_interference_size (C++17)
     // provides the platform's recommended alignment size to avoid this.
-    alignas(std::hardware_destructive_interference_size) std::atomic<size_t> m_write_pos = {0};
-    alignas(std::hardware_destructive_interference_size) std::atomic<size_t> m_read_pos  = {0};
+    alignas(CacheLineSize) std::atomic<size_t> m_write_pos = {0};
+    alignas(CacheLineSize) std::atomic<size_t> m_read_pos  = {0};
 
     /// The total number of items the buffer can hold.
     const size_t m_capacity;
