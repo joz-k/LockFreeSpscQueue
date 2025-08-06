@@ -210,7 +210,7 @@ This method keeps the library separate from your own source code and makes updat
 1.  **Add the repository as a submodule to your project:**
     ```sh
     # From the root of your project
-    git submodule add <your-repo-url> external/LockFreeSpscQueue
+    git submodule add https://github.com/joz-k/LockFreeSpscQueue.git external/LockFreeSpscQueue
     ```
 
 2.  **In your project's main `CMakeLists.txt`, add the following:**
