@@ -173,7 +173,7 @@ This project uses CMake for building and CTest for running the test suite.
     # This command configures the project. By default, it will enable 
     # building the tests and examples since the corresponding CMake options default to ON.
     cmake -S . -B build
-    # Or if you want to use Ninja instaed of Make:
+    # Or if you want to use Ninja instead of Make:
     cmake -G Ninja -S . -B build
     ```
     If you wish to disable building tests or examples (e.g., for a quicker configuration), you can turn the options off from the command line:
@@ -210,7 +210,7 @@ This method keeps the library separate from your own source code and makes updat
 1.  **Add the repository as a submodule to your project:**
     ```sh
     # From the root of your project
-    git submodule add <your-repo-url> external/LockFreeSpscQueue
+    git submodule add https://github.com/joz-k/LockFreeSpscQueue.git external/LockFreeSpscQueue
     ```
 
 2.  **In your project's main `CMakeLists.txt`, add the following:**
