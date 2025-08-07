@@ -47,7 +47,7 @@ void basic_usage()
                     write_scope.get_block1().size(),
                     write_scope.get_block1().begin());
 
-        // An above `copy_n` is eqivalent to:
+        // An above `copy_n` is equivalent to:
         //     std::copy(data.begin(),
         //               data.begin() + write_scope.get_block1().size(),
         //               write_scope.get_block1().begin());
@@ -57,7 +57,7 @@ void basic_usage()
                         write_scope.get_block2().size(),
                         write_scope.get_block2().begin());
 
-            // An above `copy_n` is eqivalent to:
+            // An above `copy_n` is equivalent to:
             //      std::copy(data.begin() + write_scope.get_block1().size(),
             //                data.begin() + write_scope.get_block1().size()
             //                             + write_scope.get_block2().size(),
