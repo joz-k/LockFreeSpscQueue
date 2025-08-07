@@ -156,8 +156,8 @@ void stress_test()
         size_t total_read = 0;
 
         while (true) {
-            // Check for timeout (e.g., 5 seconds) to prevent infinite loops
-            if (std::chrono::steady_clock::now() - start_time > std::chrono::seconds(5)) {
+            // Check for timeout (e.g., 10 seconds) to prevent infinite loops
+            if (std::chrono::steady_clock::now() - start_time > std::chrono::seconds(10)) {
                 std::cout << "Consumer: Timeout reached, exiting\n";
                 break;
             }
