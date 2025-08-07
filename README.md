@@ -298,13 +298,15 @@ This output clearly shows how performance dramatically increases when transferri
 
 ## Disclaimers
 
-This code was only tested on x86_64 and ARM64 CPU architectures. I also did not try running it on operating systems other than Linux, macOS, and Windows.
+This code was only tested on x86\_64 and ARM64 CPU architectures. I also did not try running it on operating systems other than Linux, macOS, and Windows.
 
 ## Similar Projects
 
-* https://github.com/juce-framework/JUCE/blob/master/modules/juce_core/containers/juce_AbstractFifo.h
-* https://github.com/steinwurf/boost/tree/master/boost/lockfree
-* https://github.com/cameron314/readerwriterqueue
-* https://github.com/MayaPosch/LockFreeRingBuffer
-* https://github.com/facebook/folly/blob/main/folly/ProducerConsumerQueue.h
+* <https://github.com/juce-framework/JUCE/blob/master/modules/juce_core/containers/juce_AbstractFifo.h>
+* <https://github.com/steinwurf/boost/tree/master/boost/lockfree>
+* <https://github.com/cameron314/readerwriterqueue>
+* <https://github.com/MayaPosch/LockFreeRingBuffer>
+* <https://github.com/facebook/folly/blob/main/folly/ProducerConsumerQueue.h>
+* <https://github.com/rigtorp/SPSCQueue>
+* <https://github.com/Deaod/spsc_queue>
 
