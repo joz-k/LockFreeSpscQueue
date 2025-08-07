@@ -17,7 +17,7 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 -   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
 -   **Cache-Friendly:** Atomic read/write pointers are aligned to cache lines to prevent "false sharing".
 -   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
--   **Tested:** Includes a comprehensive test suite built with CMake and CTest.
+-   **Tested:** Includes a test suite built with CMake and CTest.
 
 ## Core Concept: The Circular Buffer
 
@@ -44,12 +44,14 @@ Now, imagine the state is this, where `F` and `G` have been written, and items `
 -----------R-W
 [a|b|c|d|e|F|G|-]
 ```
-If we want to write 3 new items (`X, Y, Z`), there isn't a single contiguous block of 3 free spaces. The queue must "wrap around" the end of the buffer. The `prepare_write(3)` method handles this by returning two blocks:
+If we want to write 3 new items (`X, Y, Z`), there isn't a single contiguous block of 3 free spaces. The queue must "wrap around" the end of the buffer. The `prepare_write(3)` or `prepare_read(3)` methods handles this by returning two blocks:
 
--   `blockSize1`: The chunk at the end of the buffer.
--   `blockSize2`: The chunk that wraps around to the beginning.
+-   `block1`: The chunk at the end of the buffer.
+-   `block2`: The chunk that wraps around to the beginning.
 
 This is why the API returns two blocks — it efficiently handles this wrap-around case without needing to shuffle memory.
+
+Note: If there is no need to split the read or write operation into two chunks, only the `block1` is active and the `block2` span is returned as empty. For example, if you always write or read a single item, you can ignore `block2` altogether.
 
 ## Example Use
 
@@ -79,7 +81,7 @@ int main()
     // 4. Create a flag to signal when the producer is finished.
     std::atomic<bool> producer_is_done = false;
 
-    // 5. Start the producer and consumer threads.
+    // 5. Start the producer thread.
     //    std::jthread automatically joins on scope exit.
     std::jthread producer([&]() {
         std::cout << "Producer: Starting to send items in batches...\n";
@@ -120,6 +122,7 @@ int main()
         producer_is_done.store(true, std::memory_order_release);
     });
 
+    // 6. Start the consumer thread.
     std::jthread consumer([&]() {
         std::cout << "Consumer: Waiting for items...\n";
         while (true) {
@@ -251,7 +254,7 @@ target_include_directories(MyAwesomeApp PRIVATE external/LockFreeSpscQueue/inclu
 
 ## (Advanced) Performance Benchmarks
 
-This project includes a performance benchmark suite using the [Google Benchmark](https://github.com/google/benchmark) library to measure queue throughput.
+This project includes a simple performance benchmark suite using the [Google Benchmark](https://github.com/google/benchmark) library to measure queue throughput.
 
 The benchmarks are **disabled by default** to keep configuration and build times fast for users who only want to integrate the library.
 
