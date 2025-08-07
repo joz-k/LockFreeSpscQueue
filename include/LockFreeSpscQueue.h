@@ -22,6 +22,7 @@
 #include <span>
 #include <stdexcept>
 #include <bit>
+#include <new>
 
 /**
  * @class LockFreeSpscQueue
@@ -218,19 +219,31 @@ public:
      */
     [[nodiscard]] WriteScope prepare_write(size_t num_items_to_write)
     {
-        // Acquire load synchronizes-with the release store in commit_read, ensuring
-        // we see the latest free space created by the consumer.
-        const size_t current_read_pos  = m_read_pos.load(std::memory_order_acquire);
-        // Relaxed load is safe for the write pointer as this is the only thread that modifies it.
-        const size_t current_write_pos = m_write_pos.load(std::memory_order_relaxed);
+        // "Fast path" calculation using the producer's local cache of the read
+        // pointer (which involves no cross-core communication) and `write_pos`.
+        // Relaxed load is safe for the `write_pos` index as this is the only
+        // thread that modifies it.
+        const size_t current_write_pos
+                        = m_producer_data.write_pos.load(std::memory_order_relaxed);
+        size_t available_space
+                        = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
 
-        // This subtraction calculates the number of items currently in the queue,
-        // even when the 64-bit indices wrap around, due to the defined behavior of
-        // unsigned integer arithmetic.
-        const size_t num_items_in_queue = current_write_pos - current_read_pos;
-        const size_t available_space    = m_capacity - num_items_in_queue;
-        const size_t items_to_write     = std::min(num_items_to_write, available_space);
+        // Note: The subtraction `current_write_pos - cached_read_pos`
+        // calculates the number of items currently in the queue, even when the
+        // 64-bit indices wrap around, due to the defined behavior of unsigned
+        // integer arithmetic.
 
+        if (available_space < num_items_to_write) {
+            // "Slow path": our cache is out of date.
+            // Perform an expensive acquire load to get the true position from the consumer.
+            m_producer_data.cached_read_pos
+                        = m_consumer_data.read_pos.load(std::memory_order_acquire);
+            // Recalculate available space with the updated value.
+            available_space
+                        = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
+        }
+
+        const size_t items_to_write = std::min(num_items_to_write, available_space);
         if (items_to_write == 0) { return {0, 0, 0, 0, nullptr}; }
 
         const size_t start_index  = current_write_pos & m_capacity_mask;
@@ -252,17 +265,24 @@ public:
      */
     [[nodiscard]] ReadScope prepare_read(size_t num_items_to_read)
     {
-        // Acquire load synchronizes-with the release store in commit_write, ensuring
-        // that any data writes made by the producer are visible before we read them.
-        const size_t current_write_pos = m_write_pos.load(std::memory_order_acquire);
-        // Relaxed load is safe for the read pointer as this is the only thread that modifies it.
-        const size_t current_read_pos  = m_read_pos.load(std::memory_order_relaxed);
+        // "Fast path" calculation using the consumer's local cache of the write
+        // pointer and the `read_pos`. Relaxed load for the `read_pos` is
+        // safe for the read pointer as this is the only thread that modifies it.
+        const size_t current_read_pos
+                        = m_consumer_data.read_pos.load(std::memory_order_relaxed);
+        size_t available_items
+                        = m_consumer_data.cached_write_pos - current_read_pos;
 
-        // This subtraction calculates the number of items available to be read,
-        // even across size_t wrap-around, due to unsigned integer properties.
-        const size_t available_items = current_write_pos - current_read_pos;
-        const size_t items_to_read   = std::min(num_items_to_read, available_items);
+        if (available_items < num_items_to_read) {
+            // "Slow path": our cache is out of date.
+            // Perform an expensive acquire load to get the true position from the producer.
+            m_consumer_data.cached_write_pos
+                            = m_producer_data.write_pos.load(std::memory_order_acquire);
+            // Recalculate available items with the updated value.
+            available_items = m_consumer_data.cached_write_pos - current_read_pos;
+        }
 
+        const size_t items_to_read = std::min(num_items_to_read, available_items);
         if (items_to_read == 0) { return {0, 0, 0, 0, nullptr}; }
 
         const size_t start_index  = current_read_pos & m_capacity_mask;
@@ -282,8 +302,8 @@ public:
      */
     [[nodiscard]] size_t get_num_items_ready() const noexcept
     {
-        return m_write_pos.load(std::memory_order_relaxed)
-                    - m_read_pos.load(std::memory_order_relaxed);
+        return m_producer_data.write_pos.load(std::memory_order_relaxed)
+                                - m_consumer_data.read_pos.load(std::memory_order_relaxed);
     }
 
     /**
@@ -358,29 +378,31 @@ private:
     {
         // This function uses a load-then-store sequence, which is a deliberate
         // performance optimization. It is only safe because this is a single-producer
-        // queue, meaning this is the ONLY thread that will ever write to `m_write_pos`.
+        // queue, meaning this is the ONLY thread that will ever write to `write_pos`.
         //
         // The alternative, more general-purpose atomic operation would be:
-        //   m_write_pos.fetch_add(num_items_written, std::memory_order_release);
+        //   write_pos.fetch_add(num_items_written, std::memory_order_release);
         //
         // However, `fetch_add` is a Read-Modify-Write (RMW) operation, which is
         // significantly more expensive than a simple store on most architectures.
         // We avoid the RMW operation by leveraging the SPSC guarantee.
-        m_write_pos.store(m_write_pos.load(std::memory_order_relaxed) + num_items_written,
-                          std::memory_order_release);
+        m_producer_data.write_pos.store(
+                m_producer_data.write_pos.load(std::memory_order_relaxed) + num_items_written,
+                std::memory_order_release);
     }
 
     void commit_read(size_t num_items_read) noexcept
     {
         // Similar to commit_write, this uses a load-then-store sequence as a
         // performance optimization, which is safe because of the single-consumer
-        // guarantee for `m_read_pos`.
+        // guarantee for `read_pos`.
         //
         // The more general (and more expensive) RMW alternative would be:
-        //   m_read_pos.fetch_add(num_items_read, std::memory_order_release);
+        //   read_pos.fetch_add(num_items_read, std::memory_order_release);
         //
-        m_read_pos.store(m_read_pos.load(std::memory_order_relaxed) + num_items_read,
-                         std::memory_order_release);
+        m_consumer_data.read_pos.store(
+                m_consumer_data.read_pos.load(std::memory_order_relaxed) + num_items_read,
+                std::memory_order_release);
     }
 
     std::span<T> m_buffer;
@@ -414,14 +436,23 @@ private:
     #pragma GCC diagnostic pop
 #endif
 
-    // Ensure cache line alignment to prevent "false sharing". On modern CPUs,
-    // memory is moved in cache lines. If m_write_pos (used by the producer) and
-    // m_read_pos (used by the consumer) were to share a cache line, modifications
+    // A proper cache line alignment prevents "false sharing". On modern CPUs,
+    // memory is moved in cache lines. E.g. if `write_pos` (used by the producer) and
+    // `read_pos` (used by the consumer) were to share a cache line, modifications
     // by one thread would invalidate the other thread's cache, causing significant
-    // performance degradation. std::hardware_destructive_interference_size (C++17)
-    // provides the platform's recommended alignment size to avoid this.
-    alignas(CacheLineSize) std::atomic<size_t> m_write_pos = {0};
-    alignas(CacheLineSize) std::atomic<size_t> m_read_pos  = {0};
+    // performance degradation.
+
+    // Producer-only data. Grouped to prevent false sharing with consumer data.
+    alignas(CacheLineSize) struct ProducerData {
+        std::atomic<size_t> write_pos = {0};
+        size_t        cached_read_pos = {0};
+    } m_producer_data;
+
+    // Consumer-only data. Grouped and aligned.
+    alignas(CacheLineSize) struct ConsumerData {
+        std::atomic<size_t> read_pos = {0};
+        size_t      cached_write_pos = {0};
+    } m_consumer_data;
 
     /// The total number of items the buffer can hold.
     const size_t m_capacity;
