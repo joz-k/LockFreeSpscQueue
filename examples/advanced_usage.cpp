@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <iterator>
 #include <thread>
 #include <random>
 #include <string>
@@ -98,9 +99,13 @@ void basic_usage()
 void stress_test()
 {
     std::cout << "\n=== Stress Test ===\n";
+    const size_t TOTAL_PRODUCER_WRITES = 100'000;
+    const size_t MAX_ITEMS_TO_WRITE = 4;
     std::vector<int> buffer(4); // Small buffer to force wrap-around
     LockFreeSpscQueue<int> queue(buffer);
     std::vector<int> produced_data, consumed_data;
+    produced_data.reserve(TOTAL_PRODUCER_WRITES * MAX_ITEMS_TO_WRITE);
+    consumed_data.reserve(TOTAL_PRODUCER_WRITES * MAX_ITEMS_TO_WRITE);
     std::atomic<bool> producer_done{false}; // Flag to signal producer completion
     const auto start_time = std::chrono::steady_clock::now();
 
@@ -108,11 +113,12 @@ void stress_test()
     auto producer = [&]() {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<size_t> size_dist(1, 4);
+        std::uniform_int_distribution<size_t> size_dist(1, MAX_ITEMS_TO_WRITE);
+        std::vector<int> data_buffer(MAX_ITEMS_TO_WRITE);
         std::uniform_int_distribution<int> value_dist(1, 100);
         size_t total_written = 0;
 
-        for (int i = 0; i < 100'000; ++i) {
+        for (int i = 0; i < TOTAL_PRODUCER_WRITES; ++i) {
             size_t to_write = size_dist(gen);
             auto write_scope = queue.prepare_write(to_write);
             size_t items_to_write = write_scope.get_items_written();
@@ -122,7 +128,7 @@ void stress_test()
                 continue;
             }
 
-            std::vector<int> data(items_to_write);
+            auto data = std::span{data_buffer.begin(), items_to_write};
             for (auto& item : data) {
                 item = value_dist(gen);
             }
@@ -140,8 +146,10 @@ void stress_test()
             // Collect produced data for verification
             produced_data.insert(produced_data.end(), data.begin(), data.end());
             total_written += items_to_write;
+
             std::cout << "Producer: Wrote " << items_to_write
                       << " items (total: " << total_written << ")\n";
+
             std::this_thread::yield();
         }
         producer_done.store(true, std::memory_order_release); // Signal completion
@@ -179,22 +187,22 @@ void stress_test()
                 continue;
             }
 
-            std::vector<int> data(items_to_read);
+            // Collect consumed data for verification
             std::copy(read_scope.get_block1().begin(),
                       read_scope.get_block1().end(),
-                      data.begin());
+                      std::inserter(consumed_data, consumed_data.end()));
 
             if (read_scope.get_block2().size() > 0) {
                 std::copy(read_scope.get_block2().begin(),
                           read_scope.get_block2().end(),
-                          data.begin() + read_scope.get_block1().size());
+                          std::inserter(consumed_data, consumed_data.end()));
             }
 
-            // Collect consumed data for verification
-            consumed_data.insert(consumed_data.end(), data.begin(), data.end());
             total_read += items_to_read;
+
             std::cout << "Consumer: Read " << items_to_read
                       << " items (total: " << total_read << ")\n";
+
             std::this_thread::yield();
         }
 
