@@ -15,9 +15,13 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 -   **Modern C++:** Uses modern features like `std::span`.
 -   **Header-Only:** The queue is provided as a single header file without any external dependences for easy integration.
 -   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
--   **Cache-Friendly:** Atomic read/write pointers are aligned to cache lines to prevent "false sharing".
+-   **Cache-Friendly:** The queue is optimized for multi-core performance.
+    1.  It uses `alignas` to place producer and consumer data on separate cache lines, preventing "false sharing."
+    2.  It implements a performance optimization by **caching indices per core**. Each thread maintains a local, non-atomic cache of the other thread's position, minimizing expensive cross-core atomic operations.[^1].
 -   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
 -   **Tested:** Includes a test suite built with CMake and CTest.
+
+[^1]: Erik Rigtorp's [Optimizing a ring buffer for throughput](https://rigtorp.se/ringbuffer/).
 
 ## Core Concept: The Circular Buffer
 
@@ -298,13 +302,15 @@ This output clearly shows how performance dramatically increases when transferri
 
 ## Disclaimers
 
-This code was only tested on x86_64 and ARM64 CPU architectures. I also did not try running it on operating systems other than Linux, macOS, and Windows.
+This code was only tested on x86\_64 and ARM64 CPU architectures. I also did not try running it on operating systems other than Linux, macOS, and Windows.
 
 ## Similar Projects
 
-* https://github.com/juce-framework/JUCE/blob/master/modules/juce_core/containers/juce_AbstractFifo.h
-* https://github.com/steinwurf/boost/tree/master/boost/lockfree
-* https://github.com/cameron314/readerwriterqueue
-* https://github.com/MayaPosch/LockFreeRingBuffer
-* https://github.com/facebook/folly/blob/main/folly/ProducerConsumerQueue.h
+* <https://github.com/juce-framework/JUCE/blob/master/modules/juce_core/containers/juce_AbstractFifo.h>
+* <https://github.com/steinwurf/boost/tree/master/boost/lockfree>
+* <https://github.com/cameron314/readerwriterqueue>
+* <https://github.com/MayaPosch/LockFreeRingBuffer>
+* <https://github.com/facebook/folly/blob/main/folly/ProducerConsumerQueue.h>
+* <https://github.com/rigtorp/SPSCQueue>
+* <https://github.com/Deaod/spsc_queue>
 
