@@ -17,11 +17,11 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 -   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
 -   **Cache-Friendly:** The queue is optimized for multi-core performance.
     1.  It uses `alignas` to place producer and consumer data on separate cache lines, preventing "false sharing."
-    2.  It implements a performance optimization by **caching indices per core**. Each thread maintains a local, non-atomic cache of the other thread's position, minimizing expensive cross-core atomic operations.[^1].
+    2.  It implements a performance optimization by **caching indices per core**. Each thread maintains a local, non-atomic cache of the other thread's position, minimizing expensive cross-core atomic operations.[^1]
 -   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
 -   **Tested:** Includes a test suite built with CMake and CTest.
 
-[^1]: Erik Rigtorp's [Optimizing a ring buffer for throughput](https://rigtorp.se/ringbuffer/).
+[^1]: See ["MCRingBuffer"](https://www.cse.cuhk.edu.hk/~pclee/www/pubs/ancs09poster.pdf) paper or Erik Rigtorp's [Optimizing a ring buffer for throughput](https://rigtorp.se/ringbuffer/).
 
 ## Core Concept: The Circular Buffer
 
