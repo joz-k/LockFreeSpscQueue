@@ -1,0 +1,285 @@
+#include "LockFreeSpscQueue.h"
+#include "readerwriterqueue.h" // Moodycamel's queue header
+#include <benchmark/benchmark.h>
+#include <thread>
+#include <vector>
+#include <atomic>
+#include <numeric>
+#include <random>
+
+using DataType = int64_t;
+constexpr size_t RandomDataSize       = 4001; // The prime to make patterns less obvious
+constexpr size_t ItemsPerIteration    = 100'025;
+constexpr size_t DefaultQueueCapacity = 65536; // 2^16
+
+// A capacity guaranteed to be larger than ItemsPerIteration.
+constexpr size_t LargeQueueCapacity   = 262144; // 2^18
+
+// Shared Test Data Generation
+const std::vector<DataType>& get_random_data() {
+    static const auto data = []{
+        std::vector<DataType> d(RandomDataSize);
+        std::mt19937_64 rng(33317); // Fixed seed for test stability
+        std::uniform_int_distribution<DataType> dist;
+        for (auto& val : d) { val = dist(rng); }
+        return d;
+    }();
+    return data;
+}
+
+// Benchmark Group 1: Single Item, Default "Stalling" Capacity
+
+static void BM_ThisQueue_SingleItem_DefaultBuffer(benchmark::State& state) {
+    const auto& random_data = get_random_data();
+    std::vector<DataType> shared_buffer(DefaultQueueCapacity);
+    LockFreeSpscQueue<DataType> queue(shared_buffer);
+
+    std::atomic<bool> verification_failed  = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&] {
+        size_t i = 0;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            auto scope = queue.prepare_read(1);
+            if (scope.get_items_read() == 1) {
+                if (scope.get_block1()[0] != random_data[i % RandomDataSize]) verification_failed.store(true);
+                i++;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ++n) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); return;
+            }
+            const auto& item_to_write = random_data[total_written % RandomDataSize];
+            while (true) {
+                auto scope = queue.prepare_write(1);
+                if (scope.get_items_written() == 1) {
+                    scope.get_block1()[0] = item_to_write;
+                    break;
+                }
+            }
+            total_written++;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_ThisQueue_SingleItem_DefaultBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+static void BM_Moodycamel_SingleItem_DefaultBuffer(benchmark::State& state) {
+    const auto& random_data = get_random_data();
+    moodycamel::ReaderWriterQueue<DataType> queue(DefaultQueueCapacity);
+    std::atomic<bool> verification_failed  = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&] {
+        size_t i = 0;
+        DataType item;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            if (queue.try_dequeue(item)) {
+                if (item != random_data[i % RandomDataSize]) verification_failed.store(true);
+                i++;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ++n) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); return;
+            }
+            const auto& item_to_write = random_data[total_written % RandomDataSize];
+            while (!queue.try_enqueue(item_to_write)) {}
+            total_written++;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_Moodycamel_SingleItem_DefaultBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+
+// Benchmark Group 2: Single Item, Large, hopefully "Never-Full" Capacity
+
+static void BM_OurQueue_SingleItem_LargeBuffer(benchmark::State& state) {
+    const auto& random_data = get_random_data();
+    std::vector<DataType> shared_buffer(LargeQueueCapacity);
+    LockFreeSpscQueue<DataType> queue(shared_buffer);
+
+    std::atomic<bool> verification_failed = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&] {
+        size_t i = 0;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            auto scope = queue.prepare_read(1);
+            if (scope.get_items_read() == 1) {
+                if (scope.get_block1()[0] != random_data[i % RandomDataSize]) verification_failed.store(true);
+                i++;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ++n) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); return;
+            }
+            const auto& item_to_write = random_data[total_written % RandomDataSize];
+            while (true) {
+                auto scope = queue.prepare_write(1);
+                if (scope.get_items_written() == 1) {
+                    scope.get_block1()[0] = item_to_write;
+                    break;
+                }
+                // This spin-wait should theoretically never be hit when the buffer is large.
+            }
+            total_written++;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_OurQueue_SingleItem_LargeBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+static void BM_Moodycamel_SingleItem_LargeBuffer(benchmark::State& state) {
+    const auto& random_data = get_random_data();
+    moodycamel::ReaderWriterQueue<DataType> queue(LargeQueueCapacity);
+    std::atomic<bool> verification_failed = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&] {
+        size_t i = 0;
+        DataType item;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            if (queue.try_dequeue(item)) {
+                if (item != random_data[i % RandomDataSize]) verification_failed.store(true);
+                i++;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ++n) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); return;
+            }
+            const auto& item_to_write = random_data[total_written % RandomDataSize];
+            while (!queue.try_enqueue(item_to_write)) {
+                // This spin-wait should theoretically never be hit.
+            }
+            total_written++;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_Moodycamel_SingleItem_LargeBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+
+// Benchmark Group 3: Batch/Bulk Transfers (with Default Capacity)
+
+static void BM_ThisQueue_Batch(benchmark::State& state) {
+    const size_t batch_size = state.range(0);
+    const auto& random_data = get_random_data();
+    std::vector<DataType> shared_buffer(DefaultQueueCapacity);
+    LockFreeSpscQueue<DataType> queue(shared_buffer);
+
+    std::atomic<bool> verification_failed = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&]{
+        size_t received_count = 0;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            const size_t items_read = queue.try_read(batch_size, [&](auto b1, auto b2){
+                for (const auto& item : b1) if (item != random_data[(received_count++) % RandomDataSize]) verification_failed.store(true);
+                for (const auto& item : b2) if (item != random_data[(received_count++) % RandomDataSize]) verification_failed.store(true);
+            });
+            if (items_read == 0) std::this_thread::yield();
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); consumer_should_stop.store(true); return;
+            }
+
+            const size_t current_rand_idx = total_written % RandomDataSize;
+            const size_t items_to_rand_end = RandomDataSize - current_rand_idx;
+            size_t remaining_in_iter = ItemsPerIteration - n;
+            size_t batch_to_send_size = std::min({batch_size, remaining_in_iter, items_to_rand_end});
+
+            std::span<const DataType> sub_batch(&random_data[current_rand_idx], batch_to_send_size);
+
+            size_t written_this_batch = 0;
+            while(written_this_batch < sub_batch.size()) {
+                 written_this_batch += queue.try_write(sub_batch.size() - written_this_batch, [&](auto b1, auto b2){
+                    std::copy_n(sub_batch.begin() + written_this_batch, b1.size(), b1.begin());
+                    if (!b2.empty()) std::copy_n(sub_batch.begin() + written_this_batch + b1.size(), b2.size(), b2.begin());
+                });
+            }
+            n += written_this_batch;
+            total_written += written_this_batch;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_ThisQueue_Batch)->Arg(4)->Arg(16)->Arg(64)->Arg(256)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+
+static void BM_Moodycamel_Batch(benchmark::State& state) {
+    const size_t batch_size = state.range(0);
+    const auto& random_data = get_random_data();
+    moodycamel::ReaderWriterQueue<DataType> queue(DefaultQueueCapacity);
+
+    std::atomic<bool> verification_failed  = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&]{
+        size_t received_count = 0;
+        DataType item;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            bool dequeued_something = false;
+            for (size_t i = 0; i < batch_size; ++i) {
+                if (queue.try_dequeue(item)) {
+                    if (item != random_data[(received_count++) % RandomDataSize]) verification_failed.store(true);
+                    dequeued_something = true;
+                } else {
+                    break;
+                }
+            }
+            if (!dequeued_something) std::this_thread::yield();
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; n += batch_size) {
+            if (verification_failed.load(std::memory_order_relaxed)) {
+                state.SkipWithError("Verification failed!"); consumer_should_stop.store(true); return;
+            }
+            for (size_t i = 0; i < batch_size; ++i) {
+                const auto& item_to_write = random_data[(total_written + i) % RandomDataSize];
+                while (!queue.try_enqueue(item_to_write)) {}
+            }
+            total_written += batch_size;
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_Moodycamel_Batch)->Arg(4)->Arg(16)->Arg(64)->Arg(256)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+BENCHMARK_MAIN();
