@@ -71,6 +71,48 @@ static void BM_ThisQueue_SingleItem_DefaultBuffer(benchmark::State& state) {
 }
 BENCHMARK(BM_ThisQueue_SingleItem_DefaultBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
 
+
+// "Transaction" Builk-Write API
+static void BM_ThisQueue_SingleItem_TransactionWrite256(benchmark::State& state) {
+    const auto& random_data = get_random_data();
+    std::vector<DataType> shared_buffer(DefaultQueueCapacity);
+    LockFreeSpscQueue<DataType> queue(shared_buffer);
+
+    std::atomic<bool> verification_failed  = false;
+    std::atomic<bool> consumer_should_stop = false;
+    std::jthread consumer([&] {
+        size_t i = 0;
+        while (!consumer_should_stop.load(std::memory_order_relaxed)) {
+            auto scope = queue.prepare_read(1);
+            if (scope.get_items_read() == 1) {
+                if (scope.get_block1()[0] != random_data[i % RandomDataSize]) verification_failed.store(true);
+                i++;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+    });
+
+    size_t total_written = 0;
+    for (auto _ : state) {
+        for (size_t n = 0; n < ItemsPerIteration; ) {
+            // Start a transaction for up to 256 items at a time
+            auto transaction = queue.try_start_write(256);
+            if (transaction) {
+                while(n < ItemsPerIteration && transaction->try_push(random_data[total_written % RandomDataSize])) {
+                    total_written++;
+                    n++;
+                }
+                // Transaction commits automatically when it goes out of scope here.
+            }
+        }
+    }
+    consumer_should_stop.store(true, std::memory_order_relaxed);
+    state.SetItemsProcessed(total_written);
+}
+BENCHMARK(BM_ThisQueue_SingleItem_TransactionWrite256)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+
 static void BM_Moodycamel_SingleItem_DefaultBuffer(benchmark::State& state) {
     const auto& random_data = get_random_data();
     moodycamel::ReaderWriterQueue<DataType> queue(DefaultQueueCapacity);
@@ -108,7 +150,7 @@ BENCHMARK(BM_Moodycamel_SingleItem_DefaultBuffer)->Unit(benchmark::kMillisecond)
 
 // Benchmark Group 2: Single Item, Large, hopefully "Never-Full" Capacity
 
-static void BM_OurQueue_SingleItem_LargeBuffer(benchmark::State& state) {
+static void BM_ThisQueue_SingleItem_LargeBuffer(benchmark::State& state) {
     const auto& random_data = get_random_data();
     std::vector<DataType> shared_buffer(LargeQueueCapacity);
     LockFreeSpscQueue<DataType> queue(shared_buffer);
@@ -149,7 +191,7 @@ static void BM_OurQueue_SingleItem_LargeBuffer(benchmark::State& state) {
     consumer_should_stop.store(true, std::memory_order_relaxed);
     state.SetItemsProcessed(total_written);
 }
-BENCHMARK(BM_OurQueue_SingleItem_LargeBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
+BENCHMARK(BM_ThisQueue_SingleItem_LargeBuffer)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 static void BM_Moodycamel_SingleItem_LargeBuffer(benchmark::State& state) {
     const auto& random_data = get_random_data();
