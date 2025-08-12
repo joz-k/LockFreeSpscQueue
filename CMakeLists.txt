@@ -27,9 +27,13 @@ target_include_directories(spsc_queue INTERFACE
 option(SPSC_QUEUE_BUILD_TESTS "Build the project's tests" ON)
 option(SPSC_QUEUE_BUILD_EXAMPLES "Build the project's examples" ON)
 option(SPSC_QUEUE_BUILD_BENCHMARKS "Build the project's benchmarks" OFF)
+option(SPSC_QUEUE_BUILD_BENCHMARK_COMPARE "Build comparative benchmarks against other libraries" OFF)
 
 # For MacOS
-if(APPLE AND (SPSC_QUEUE_BUILD_TESTS OR SPSC_QUEUE_BUILD_EXAMPLES OR SPSC_QUEUE_BUILD_BENCHMARKS))
+if(APPLE AND (SPSC_QUEUE_BUILD_TESTS
+              OR SPSC_QUEUE_BUILD_EXAMPLES
+              OR SPSC_QUEUE_BUILD_BENCHMARKS
+              OR SPSC_QUEUE_BUILD_BENCHMARK_COMPARE))
     # Enable experimental Clang stdlib features (for std::jthreads) when
     # building tests, examples or benchmark
     # As of Apple Clang version 17.0.0, this is still required
@@ -46,7 +50,7 @@ if(SPSC_QUEUE_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-if(SPSC_QUEUE_BUILD_BENCHMARKS)
+if(SPSC_QUEUE_BUILD_BENCHMARKS OR SPSC_QUEUE_BUILD_BENCHMARK_COMPARE)
     add_subdirectory(benchmarks)
 endif()
 
