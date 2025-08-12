@@ -1,4 +1,4 @@
-## Benchmarks
+# Benchmarks
 
 This directory contains the performance benchmark suite for the `LockFreeSpscQueue` project, built using the [Google Benchmark](https://github.com/google/benchmark) library.
 
@@ -42,9 +42,9 @@ It is **critical** to use the `Release` build type, as benchmarking a `Debug` bu
 
 ---
 
-# Raw Queue Speed Result
+## Raw Queue Speed Result
 
-When running the `queue_benchmarks`, uou will see detailed output measuring the performance for different batch sizes. The most important column is `Items/s`, which shows the throughput in millions of items per second.
+When running the `queue_benchmarks`, you will see detailed output measuring the performance for different batch sizes. The most important column is `Items/s`, which shows the throughput in millions of items per second.
 
 Example output:
 
@@ -89,9 +89,9 @@ BM_Moodycamel_Batch/256          0.242 ms 0.242 ms       2895 items_per_second=4
 
 The benchmark data reveals a clear performance profile based on the architectural trade-offs of each library.
 
-*   **1. Single-Item Transfers (`LowLevel_SingleItem`):** For individual, non-batched item transfers, `moodycamel::ReaderWriterQueue` shows significantly higher throughput (`~412 M/s`) compared to this library's low-level `prepare_write` path (`~44 M/s`). This performance difference is attributed to a fundamental architectural distinction. `moodycamel::ReaderWriterQueue` uses a "queue-of-queues" design (a linked list of smaller ring buffers). This structure provides a higher degree of decoupling, allowing its producer to often operate on a local block with minimal need to synchronize with the consumer's global position. In contrast, this library uses a single, contiguous ring buffer, which results in a tighter coupling between the producer and consumer states, leading to a higher per-transaction cost for single items.
+*   **1. Single-Item Transfers (`ThisQueue_SingleItem`):** For individual, non-batched item transfers, `moodycamel::ReaderWriterQueue` shows significantly higher throughput (`~412 M/s`) compared to this library's low-level `prepare_write` path (`~44 M/s`). This performance difference is attributed to a fundamental architectural distinction. `moodycamel::ReaderWriterQueue` uses a "queue-of-queues" design (a linked list of smaller ring buffers). This structure provides a higher degree of decoupling, allowing its producer to often operate on a local block with minimal need to synchronize with the consumer's global position. In contrast, this library uses a single, contiguous ring buffer, which results in a tighter coupling between the producer and consumer states, leading to a higher per-transaction cost for single items.
 
-*   **2. Transactional Writes (`Transaction_BulkWrite256`):** For high-frequency workloads where multiple items are produced in a tight loop, this library's `WriteTransaction` API provides the highest performance. By amortizing the cost of atomic synchronization over a large number of fast, non-atomic `try_push` calls, it achieves a throughput of **`~923 M/s`**, more than double that of Moodycamel's single-item API.
+*   **2. Transactional Writes (`ThisQueue_SingleItem_Write256`):** For high-frequency workloads where multiple items are produced in a tight loop, this library's `WriteTransaction` API provides the highest performance. By amortizing the cost of atomic synchronization over a large number of fast, non-atomic `try_push` calls, it achieves a throughput of **`~923 M/s`**, more than double that of Moodycamel's single-item API.
 
 *   **3. Batch Transfers (`Batch`):** This library's `try_write` API, designed for transferring pre-prepared blocks of data, demonstrates strong scaling performance as the batch size increases. The data shows a clear crossover point: while Moodycamel is faster for very small batches (e.g., size 4), this library's throughput surpasses it significantly for batches of approximately **8-16 items or more**, reaching over **`1.1 G/s`** at a batch size of 256. In contrast, the `moodycamel::ReaderWriterQueue` (v1.0.7) API does not offer a non-blocking bulk enqueue method, and its performance remains flat at its single-item throughput rate.
 
