@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <bit>
 #include <new>
+#include <optional>
 
 /**
  * @class LockFreeSpscQueue
@@ -187,6 +188,90 @@ public:
         LockFreeSpscQueue* m_owner_queue = nullptr;
     };
 
+    // --- The Transaction Bulk-Write API RAII Object ---
+
+    /**
+     * @brief An RAII object representing a bulk write transaction.
+     * @details This token reserves a block of space and allows for multiple,
+     *          ultra-fast, non-atomic `try_push` operations within that space.
+     *          The transaction is committed for the number of items actually
+     *          pushed when this object is destroyed. It is move-only.
+     */
+    class WriteTransaction
+    {
+    public:
+        /**
+         * @brief Tries to push a single item into the reserved transaction space.
+         * @details This is an extremely fast, non-atomic operation.
+         * @return True if the item was pushed, false if the transaction's
+         *         reserved space is full.
+         */
+        bool try_push(const T& item)
+        {
+            if (m_items_pushed_count >= m_total_reserved_size) return false;
+
+            if (m_items_pushed_count < m_block1.size()) {
+                m_block1[m_items_pushed_count] = item;
+            } else {
+                m_block2[m_items_pushed_count - m_block1.size()] = item;
+            }
+            m_items_pushed_count++;
+            return true;
+        }
+
+        // Overload for movable types
+        bool try_push(T&& item)
+        {
+            if (m_items_pushed_count >= m_total_reserved_size) return false;
+
+            if (m_items_pushed_count < m_block1.size()) {
+                m_block1[m_items_pushed_count] = std::move(item);
+            } else {
+                m_block2[m_items_pushed_count - m_block1.size()] = std::move(item);
+            }
+            m_items_pushed_count++;
+            return true;
+        }
+
+        /** @brief Returns the total number of items this transaction can hold. */
+        [[nodiscard]] size_t capacity() const { return m_total_reserved_size; }
+        /** @brief Returns how many items have been pushed so far. */
+        [[nodiscard]] size_t items_pushed() const { return m_items_pushed_count; }
+
+        ~WriteTransaction()
+        {
+            if (m_owner_queue != nullptr) {
+                m_owner_queue->commit_write(m_items_pushed_count);
+            }
+        }
+
+        WriteTransaction(const WriteTransaction&) = delete;
+        WriteTransaction& operator=(const WriteTransaction&) = delete;
+        WriteTransaction(WriteTransaction&& other) noexcept
+            : m_owner_queue(other.m_owner_queue)
+            , m_block1(other.m_block1), m_block2(other.m_block2)
+            , m_total_reserved_size(other.m_total_reserved_size)
+            , m_items_pushed_count(other.m_items_pushed_count)
+        {
+            other.m_owner_queue = nullptr;
+            other.m_items_pushed_count = 0;
+        }
+        WriteTransaction& operator=(WriteTransaction&&) = delete;
+
+    private:
+        friend class LockFreeSpscQueue;
+        WriteTransaction(LockFreeSpscQueue* owner, std::span<T> b1, std::span<T> b2)
+            : m_owner_queue(owner)
+            , m_block1(b1), m_block2(b2)
+            , m_total_reserved_size(b1.size() + b2.size()) {}
+
+        LockFreeSpscQueue* m_owner_queue = nullptr;
+        std::span<T> m_block1;
+        std::span<T> m_block2;
+        size_t m_total_reserved_size = 0;
+        size_t m_items_pushed_count  = 0;
+    };
+
     // --- Public API ---
 
     /**
@@ -290,6 +375,21 @@ public:
         const size_t block_size1  = std::min(items_to_read, items_to_end);
         const size_t block_size2  = items_to_read - block_size1;
         return {start_index, block_size1, 0, block_size2, this};
+    }
+
+    /**
+     * @brief Tries to start a bulk write transaction.
+     * @param num_items The desired number of items to reserve space for.
+     * @return An std::optional containing a WriteTransaction if at least space
+     *         for a single item was successfully reserved, otherwise std::nullopt.
+     */
+    [[nodiscard]] std::optional<WriteTransaction> try_start_write(size_t num_items)
+    {
+        auto scope = prepare_write(num_items);
+        if (scope.get_items_written() == 0) {
+            return std::nullopt;
+        }
+        return WriteTransaction(this, scope.get_block1(), scope.get_block2());
     }
 
     /** @brief Returns the total capacity of the queue (the size of the buffer). */
