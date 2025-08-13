@@ -6,7 +6,7 @@ It includes:
 
 The suite includes two primary executables:
 1.  **`queue_benchmark`:** A simple performance benchmark that measures the raw throughput of this library's batching API.
-2.  **`queue_comparison_benchmark`:** A comparative benchmark that stress-tests this library against the industry-standard [moodycamel::readerwriterqueue](https://github.com/cameron314/readerwriterqueue).
+2.  **`queue_comparison_benchmark`:** A comparative benchmark that stress-tests this library against the industry-standard [moodycamel::ReaderWriterQueue](https://github.com/cameron314/readerwriterqueue).
 
 The benchmarks are **disabled by default** to keep configuration and build times fast for users who only want to integrate the library.
 
@@ -19,10 +19,10 @@ It is **critical** to use the `Release` build type, as benchmarking a `Debug` bu
 
     ```sh
     # To build ONLY the internal benchmark:
-    cmake -S .. -B build -DCMAKE_BUILD_TYPE=Release -DSPSC_QUEUE_BUILD_BENCHMARKS=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSPSC_QUEUE_BUILD_BENCHMARKS=ON
 
     # To build ONLY the comparison benchmark (most common):
-    cmake -S .. -B build -DCMAKE_BUILD_TYPE=Release -DSPSC_QUEUE_BUILD_BENCHMARK_COMPARE=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSPSC_QUEUE_BUILD_BENCHMARK_COMPARE=ON
     ```
     *Note: The first time you run this, CMake will download the required dependency libraries, which may take a moment.*
 
@@ -37,14 +37,14 @@ It is **critical** to use the `Release` build type, as benchmarking a `Debug` bu
     ./build/benchmarks/queue_comparison_benchmark
 
     # On Windows
-    .\build\benchmarks\Release\queue_comparison_benchmark.exe
+    .\build\benchmarks\queue_comparison_benchmark.exe
     ```
 
 ---
 
 ## Raw Queue Speed Result
 
-When running the `queue_benchmarks`, you will see detailed output measuring the performance for different batch sizes. The most important column is `Items/s`, which shows the throughput in millions of items per second.
+When running the [`queue_benchmark`](queue_benchmark.cpp), you will see detailed output measuring the performance for different batch sizes. The most important column is `Items/s`, which shows the throughput in millions of items per second.
 
 Example output:
 
@@ -62,7 +62,7 @@ This output clearly shows how performance dramatically increases when transferri
 
 ## Performance Comparison: Results & Analysis
 
-The following are example results from running the `queue_comparison_benchmark` on an Apple MacBook Air (M2). The benchmark transfers a sequence of pseudo-random `int64_t` values and simultaneously verifies data integrity, making it both a performance and correctness stress test.
+The following are example results from running the [`queue_comparison_benchmark`](queue_comparison_benchmark.cpp) on an Apple MacBook Air (M2). The benchmark transfers a sequence of pseudo-random `int64_t` values and simultaneously verifies data integrity, making it both a performance and correctness stress test.
 
 ### Benchmark Data
 
