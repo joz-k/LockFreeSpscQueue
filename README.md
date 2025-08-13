@@ -259,49 +259,9 @@ add_executable(MyAwesomeApp src/main.cpp)
 target_include_directories(MyAwesomeApp PRIVATE external/LockFreeSpscQueue/include)
 ```
 
-## (Advanced) Performance Benchmarks
+## Performance Benchmarks
 
-This project includes a simple performance benchmark suite using the [Google Benchmark](https://github.com/google/benchmark) library to measure queue throughput.
-
-The benchmarks are **disabled by default** to keep configuration and build times fast for users who only want to integrate the library.
-
-### How to Run Benchmarks
-
-1.  **Configure CMake with benchmarks enabled:**
-    You must explicitly enable the option `SPSC_QUEUE_BUILD_BENCHMARKS` when running CMake.
-
-    ```sh
-    # From the project root directory
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSPSC_QUEUE_BUILD_BENCHMARKS=ON
-    ```
-    *Note: The first time you run this, CMake will download the Google Benchmark source code, which may take a moment.*
-
-2.  **Build the project:**
-    This will now build the `queue_benchmark` executable in addition to any other enabled targets.
-    ```sh
-    cmake --build build
-    ```
-
-3.  **Run the benchmark executable:**
-    ```sh
-    ./build/benchmarks/queue_benchmark
-    ```
-
-### Example Benchmark Output
-
-You will see detailed output measuring the performance for different batch sizes. The most important column is `Items/s`, which shows the throughput in millions of items per second.
-
-```
-------------------------------------------------------------------------
-Benchmark                  Time       CPU Iterations UserCounters...
-------------------------------------------------------------------------
-BM_QueueThroughput/1   0.042 ms  0.042 ms      16717 Items/s=195.043M/s
-BM_QueueThroughput/4   0.011 ms  0.011 ms      66833 Items/s=777.743M/s
-BM_QueueThroughput/16  0.003 ms  0.003 ms     266026 Items/s=3.10748G/s
-BM_QueueThroughput/64  0.001 ms  0.001 ms    1049349 Items/s=12.3991G/s
-BM_QueueThroughput/256 0.000 ms  0.000 ms    2211341 Items/s=25.924G/s
-```
-This output clearly shows how performance dramatically increases when transferring items in batches compared to one by one.
+This project includes a benchmark suite, using the [Google Benchmark](https://github.com/google/benchmark) library, to measure queue throughput and compare it against [`moodycamel::ReaderWriterQueue`](https://github.com/cameron314/readerwriterqueue). For instructions on how to run the benchmarks, see the [Benchmarks](benchmarks/README.md) section.
 
 ## Disclaimers
 
