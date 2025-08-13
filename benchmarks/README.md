@@ -6,7 +6,7 @@ It includes:
 
 The suite includes two primary executables:
 1.  **`queue_benchmark`:** A simple performance benchmark that measures the raw throughput of this library's batching API.
-2.  **`queue_comparison_benchmark`:** A comparative benchmark that stress-tests this library against the industry-standard [moodycamel::ReaderWriterQueue](https://github.com/cameron314/readerwriterqueue).
+2.  **`queue_comparison_benchmark`:** A comparative benchmark that stress-tests this library against the industry-standard [`moodycamel::ReaderWriterQueue`](https://github.com/cameron314/readerwriterqueue).
 
 The benchmarks are **disabled by default** to keep configuration and build times fast for users who only want to integrate the library.
 
