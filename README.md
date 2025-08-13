@@ -4,7 +4,7 @@
 
 # C++23 Lock-Free SPSC Queue
 
-A high-performance, single-producer, single-consumer (SPSC) queue implemented in modern C++23.
+A high-performance, _batch-oriented_, single-producer, single-consumer (SPSC) queue implemented in modern C++23.
 
 This project provides a robust, tested, lock-free queue that is suitable for high-performance applications, such as real-time audio or low-latency trading systems, where data must be exchanged between two threads with minimal overhead.
 
@@ -18,10 +18,13 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 -   **Cache-Friendly:** The queue is optimized for multi-core performance.
     1.  It uses `alignas` to place producer and consumer data on separate cache lines, preventing "false sharing."
     2.  It implements a performance optimization by **caching indices per core**. Each thread maintains a local, non-atomic cache of the other thread's position, minimizing expensive cross-core atomic operations.[^1]
--   **`JUCE::AbstractFifo`-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
+-   **[`JUCE::AbstractFifo`][JuceFifo]-inspired Design:** The API manages two indices for a user-provided buffer, giving the user full control over memory allocation.
 -   **Tested:** Includes a test suite built with CMake and CTest.
+-   **Highly-Performant:** Optimized for batch-oriented use cases. It scales well with larger batches, often surpassing the [performance](benchmarks/README.md) of other industry-standard solutions.
 
-[^1]: See ["MCRingBuffer"](https://www.cse.cuhk.edu.hk/~pclee/www/pubs/ancs09poster.pdf) paper or Erik Rigtorp's [Optimizing a ring buffer for throughput](https://rigtorp.se/ringbuffer/).
+
+[JuceFifo]: https://docs.juce.com/master/classAbstractFifo.html
+[^1]: See ["MCRingBuffer"](https://www.cse.cuhk.edu.hk/~pclee/www/pubs/ancs09poster.pdf) paper or Rigtorp's [Optimizing a ring buffer for throughput](https://rigtorp.se/ringbuffer/).
 
 ## Core Concept: The Circular Buffer
 
