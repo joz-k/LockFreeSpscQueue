@@ -92,7 +92,10 @@ public:
 
         ~WriteScope() noexcept
         {
-            if (m_owner_queue != nullptr) { m_owner_queue->commit_write(get_items_written()); }
+            if (m_owner_queue != nullptr) {
+                m_owner_queue->commit_write(get_items_written());
+                m_owner_queue = nullptr;
+            }
         }
 
         // This RAII object is move-only to ensure single ownership of a transaction.
@@ -158,7 +161,10 @@ public:
 
         ~ReadScope() noexcept
         {
-            if (m_owner_queue != nullptr) { m_owner_queue->commit_read(get_items_read()); }
+            if (m_owner_queue != nullptr) {
+                m_owner_queue->commit_read(get_items_read());
+                m_owner_queue = nullptr;
+            }
         }
 
         // This RAII object is move-only to ensure single ownership of a transaction.
