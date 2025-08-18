@@ -17,3 +17,8 @@ add_executable(test_convenience_api test_convenience_api.cpp)
 target_link_libraries(test_convenience_api PRIVATE spsc_queue Threads::Threads)
 add_test(NAME ConvenienceApi COMMAND test_convenience_api)
 
+# --- Test: Stress Test Consumer - Producer ---
+add_executable(stress_test stress_test.cpp)
+target_link_libraries(stress_test PRIVATE spsc_queue Threads::Threads)
+add_test(NAME StressTest COMMAND stress_test)
+
