@@ -181,3 +181,73 @@ void low_level_batch_consumer(LockFreeSpscQueue<Message>& queue)
     // The read is automatically committed when `read_scope` is destroyed.
 }
 ```
+
+## 4. Range-Based API (`std::ranges`)
+
+For maximum convenience and compatibility with modern C++ algorithms, both the `WriteScope` and `ReadScope` objects are fully compliant with the C++20 `std::ranges` library. This allows for direct, elegant iteration, completely abstracting away the two-block nature of the circular buffer.
+
+### Writing with a Range-Based `for` Loop
+
+This is a clear and idiomatic way to fill the reserved slots in a write transaction.
+
+```cpp
+void range_based_producer(LockFreeSpscQueue<int>& queue)
+{
+    // Ask to reserve space for 10 items.
+    if (auto write_scope = queue.prepare_write(10)) {
+        // The WriteScope object is directly iterable.
+        // We can iterate over the empty slots and write to them.
+        int i = 0;
+        for (int& slot : write_scope) {
+            slot = i++;
+        }
+    }
+    // The write is automatically committed when `write_scope` is destroyed.
+}
+```
+
+### Reading with a Range-Based `for` Loop
+
+This is the simplest way to consume data from the queue. The custom iterator handles the jump between the two memory blocks transparently.
+
+```cpp
+void range_based_consumer(LockFreeSpscQueue<int>& queue)
+{
+    // Ask to read up to 16 items at a time.
+    if (auto read_scope = queue.prepare_read(16))
+    {
+        // The ReadScope object is a C++20 range.
+        // The for loop will seamlessly iterate over block1 and then block2.
+        for (const int& item : read_scope)
+        {
+            std::cout << "Consumer: Got " << item << "\n";
+        }
+    }
+    // The read is automatically committed when `read_scope` is destroyed.
+}
+```
+
+### Using with `std::ranges` Algorithms
+
+Because the `Scope` objects are proper ranges, you can use them with the powerful algorithms from the `<algorithm>` and `<numeric>` headers.
+
+```cpp
+#include <numeric>   // For std::accumulate
+#include <algorithm> // For std::ranges::copy
+
+void algorithm_example(LockFreeSpscQueue<int>& queue)
+{
+    // Use std::ranges::copy to fill a write scope from another container.
+    if (auto write_scope = queue.prepare_write(10)) {
+        std::vector<int> source_data(write_scope.get_items_written(), 42); // Fill with 42s
+        std::ranges::copy(source_data, write_scope.begin());
+    }
+
+    // Use std::accumulate to sum all the items in a read scope.
+    if (auto read_scope = queue.prepare_read(10)) {
+        long long sum = std::accumulate(read_scope.begin(), read_scope.end(), 0LL);
+        std::cout << "Sum of items in queue: " << sum << "\n";
+    }
+}
+```
+

@@ -62,13 +62,81 @@ public:
      * @brief An RAII scope object representing a prepared write operation.
      * @details Provides direct `std::span` access to the writable blocks in the
      *          underlying buffer. The transaction is committed when this object
-     *          is destroyed. It is move-only.
+     *          is destroyed. This object also satisfies the `std::ranges::range`
+     *          concept, allowing for direct iteration over the writable slots.
+     *          It is move-only.
      * @warning The user MUST write a number of items exactly equal to the value
      *          returned by `get_items_written()`. Failure to do so will result
      *          in the consumer reading uninitialized/garbage data.
      */
     struct WriteScope
     {
+        // --- Custom Iterator for WriteScope ---
+        class iterator
+        {
+        public:
+            using iterator_category = std::forward_iterator_tag;
+            using value_type        = T;
+            using difference_type   = std::ptrdiff_t;
+            using pointer           = T*;
+            using reference         = T&;
+            using SpanIterator      = typename std::span<T>::iterator;
+
+            iterator() = default;
+            reference operator*() const { return *m_current_iter; }
+            pointer operator->() const { return &(*m_current_iter); }
+
+            iterator& operator++() {
+                ++m_current_iter;
+                if (m_in_block1 && m_current_iter == m_block1_end) {
+                    m_current_iter = m_block2_begin;
+                    m_in_block1 = false;
+                }
+                return *this;
+            }
+            iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
+            bool operator==(const iterator& other) const = default;
+
+        private:
+            friend struct WriteScope;
+            iterator(SpanIterator b1_begin, SpanIterator b1_end,
+                     SpanIterator b2_begin, SpanIterator b2_end,
+                     bool is_begin)
+                : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
+            {
+                if (is_begin) {
+                    if (b1_begin != b1_end) { // If block1 is not empty, start there.
+                        m_current_iter = b1_begin;
+                        m_in_block1    = true;
+                    } else { // Otherwise, start at block2.
+                        m_current_iter = b2_begin;
+                        m_in_block1    = false;
+                    }
+                } else { // This is the end() sentinel iterator.
+                    m_current_iter = m_block2_end; // The end is always the end of block2.
+                    m_in_block1    = false;
+                }
+            }
+
+            SpanIterator m_current_iter;
+            SpanIterator m_block1_end;
+            SpanIterator m_block2_begin;
+            SpanIterator m_block2_end;
+            bool m_in_block1 = false;
+        };
+
+        // --- Making WriteScope a C++20 Range ---
+        [[nodiscard]] iterator begin() {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+        }
+        [[nodiscard]] iterator end() {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+        }
+
         /** @brief Returns a span representing the first contiguous block to write to. */
         [[nodiscard]] std::span<T> get_block1() const
         {
@@ -103,9 +171,9 @@ public:
         WriteScope& operator=(const WriteScope&) = delete;
 
         WriteScope(WriteScope&& other) noexcept
-            : start_index1(other.start_index1), block_size1(other.block_size1),
-              start_index2(other.start_index2), block_size2(other.block_size2),
-              m_owner_queue(other.m_owner_queue)
+            : start_index1(other.start_index1), block_size1(other.block_size1)
+            , start_index2(other.start_index2), block_size2(other.block_size2)
+            , m_owner_queue(other.m_owner_queue)
         { other.m_owner_queue = nullptr; }
 
         // Move assignment is deleted. It is not possible to assign to the const members,
@@ -131,13 +199,80 @@ public:
      * @brief An RAII scope object representing a prepared read operation.
      * @details Provides direct `std::span` access to the readable blocks in the
      *          underlying buffer. The transaction is committed when this object
-     *          is destroyed. It is move-only.
+     *          is destroyed. This object also satisfies the `std::ranges::range`
+     *          concept, allowing direct iteration. It is move-only.
      * @warning The user MUST treat all data within the returned spans as read.
      *          The full `get_items_read()` amount will be committed, advancing
      *          the read pointer and making the space available for future writes.
      */
     struct ReadScope
     {
+        // --- Custom Iterator for ReadScope ---
+        class iterator
+        {
+        public:
+            using iterator_category = std::forward_iterator_tag;
+            using value_type        = const T;
+            using difference_type   = std::ptrdiff_t;
+            using pointer           = const T*;
+            using reference         = const T&;
+            using SpanConstIterator = typename std::span<const T>::iterator;
+
+            iterator() = default;
+            reference operator*() const { return *m_current_iter; }
+            pointer operator->() const { return &(*m_current_iter); }
+
+            iterator& operator++() {
+                ++m_current_iter;
+                if (m_in_block1 && m_current_iter == m_block1_end) {
+                    m_current_iter = m_block2_begin;
+                    m_in_block1    = false;
+                }
+                return *this;
+            }
+            iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
+            bool operator==(const iterator& other) const = default;
+
+        private:
+            friend struct ReadScope;
+            iterator(SpanConstIterator b1_begin, SpanConstIterator b1_end,
+                     SpanConstIterator b2_begin, SpanConstIterator b2_end,
+                     bool is_begin)
+                : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
+            {
+                if (is_begin) {
+                    if (b1_begin != b1_end) {
+                        m_current_iter = b1_begin;
+                        m_in_block1    = true;
+                    } else {
+                        m_current_iter = b2_begin;
+                        m_in_block1    = false;
+                    }
+                } else {
+                    m_current_iter = m_block2_end;
+                    m_in_block1    = false;
+                }
+            }
+
+            SpanConstIterator m_current_iter;
+            SpanConstIterator m_block1_end;
+            SpanConstIterator m_block2_begin;
+            SpanConstIterator m_block2_end;
+            bool m_in_block1 = false;
+        };
+
+        // --- Making ReadScope a C++20 Range ---
+        [[nodiscard]] iterator begin() const {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+        }
+        [[nodiscard]] iterator end() const {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+        }
+
         /** @brief Returns a span representing the first contiguous block to read from. */
         [[nodiscard]] std::span<const T> get_block1() const
         {
