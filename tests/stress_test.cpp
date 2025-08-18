@@ -69,9 +69,6 @@ void stress_test()
             produced_data.insert(produced_data.end(), data.begin(), data.end());
             total_written += items_to_write;
 
-            std::cout << "Producer: Wrote " << items_to_write
-                      << " items (total: " << total_written << ")\n";
-
             std::this_thread::yield();
         }
         producer_done.store(true, std::memory_order_release); // Signal completion
@@ -121,9 +118,6 @@ void stress_test()
             }
 
             total_read += items_to_read;
-
-            std::cout << "Consumer: Read " << items_to_read
-                      << " items (total: " << total_read << ")\n";
 
             std::this_thread::yield();
         }
