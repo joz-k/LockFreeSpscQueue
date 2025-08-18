@@ -12,7 +12,7 @@ This project provides a robust, tested, lock-free queue that is suitable for hig
 
 -   **Lock-Free:** Uses `std::atomic` with correct memory ordering to ensure thread safety without mutexes, preventing deadlocks and priority inversion issues.
 -   **Single-Producer, Single-Consumer (SPSC):** Optimized for the common two-thread communication pattern.
--   **Modern C++:** Uses modern features like `std::span`.
+-   **Modern C++:** Uses modern features like `std::span` and `std::ranges`.
 -   **Header-Only:** The queue is provided as a single header file without any external dependences for easy integration.
 -   **Move Semantics Friendly:** The API design grants direct access to the buffer slots via `std::span` (in the `Scope` objects) and lambda arguments (in the `try_write`/`try_read` methods). This allows users to `std::move` objects into and out of the queue, providing a significant performance advantage over pointer-based APIs (which imply `memcpy`-style copies) when working with non-trivially-copyable types like `std::string`, `std::vector`, or `std::unique_ptr`.
 -   **Cache-Friendly:** The queue is optimized for multi-core performance.
@@ -61,6 +61,10 @@ This is why the API returns two blocks — it efficiently handles this wrap-arou
 Note: If there is no need to split the read or write operation into two chunks, only the `block1` is active and the `block2` span is returned as empty. For example, if you always write or read a single item, you can ignore `block2` altogether.
 
 ## Example Use
+
+> [!TIP]
+> Please refer to the "[Examples](examples/README.md)" section to explore more API options, including the
+> new [Range-Based API](examples/README.md##4-range-based-api-stdranges), which completely abstracs away the two-block nature of the circular buffer.
 
 Here is a complete, minimal example demonstrating the recommended batch-oriented usage. A producer thread sends several small batches of integers, and a consumer thread reads them as they become available. 
 
