@@ -28,7 +28,7 @@
 /**
  * @class LockFreeSpscQueue
  * @brief A lock-free, single-producer, single-consumer (SPSC) queue that manages
- *        indices for a user-provided buffer.
+ *        indices for a user-provided ring buffer.
  *
  * @details This class takes a non-owning view (`std::span`) of a user-provided buffer
  *          at construction. It safely manages read and write indices for that buffer.
@@ -304,9 +304,16 @@ public:
      * @details This should only be called by the single producer thread. The number
      *          of items for which space is reserved is returned via the `get_items_written()`
      *          method on the returned `WriteScope` object.
+     * @note    If the writer is writing data at a rate much faster than the
+     *          reader is able to consume, the `prepare_write()` method will inevitably
+     *          return an empty `WriteScope` without any block containing a
+     *          space for the writer. In such a case, the writer thread needs to
+     *          wait for the reader thread to free up some space in the ring
+     *          buffer.
      * @param num_items_to_write The maximum number of items you wish to write.
      * @return A `WriteScope` object detailing where to copy the data. The number of
-     *         items actually prepared may be less than requested if the queue is full.
+     *         items that are actually prepared might be less than what was
+     *         requested, or even zero if the queue is full.
      */
     [[nodiscard]] WriteScope prepare_write(size_t num_items_to_write)
     {
