@@ -172,6 +172,14 @@ public:
             }
         }
 
+        /**
+         * @brief Releases ownership of the transaction, preventing the destructor
+         * from automatically committing the write.
+         * @details This is an advanced feature used when another object, like a
+         *          WriteTransaction, needs to take over responsibility for the commit.
+         */
+        void release() noexcept { m_owner_queue = nullptr; }
+
         // This RAII object is move-only to ensure single ownership of a transaction.
         WriteScope(const WriteScope&) = delete;
         WriteScope& operator=(const WriteScope&) = delete;
@@ -628,7 +636,15 @@ public:
         if (scope.get_items_written() == 0) {
             return std::nullopt;
         }
-        return WriteTransaction(this, scope.get_block1(), scope.get_block2());
+
+        // Create the transaction using the spans from the scope.
+        auto transaction = WriteTransaction(this, scope.get_block1(), scope.get_block2());
+
+        // Release the scope so its destructor does nothing.
+        // The WriteTransaction is now solely responsible for the final commit.
+        scope.release();
+
+        return transaction;
     }
 
     /** @brief Returns the total capacity of the queue (the size of the buffer). */
