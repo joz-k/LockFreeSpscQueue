@@ -96,6 +96,13 @@ public:
             }
             iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
             bool operator==(const iterator& other) const = default;
+            bool operator==(const iterator& other) const {
+                // For two iterators to be equal, they only need to point to the same element.
+                // The other members define the boundaries of the range, which are guaranteed
+                // to be the same if the iterators originate from the same WriteScope object,
+                // a precondition for valid comparison.
+                return m_current_iter == other.m_current_iter;
+            }
 
         private:
             friend struct WriteScope;
@@ -247,7 +254,10 @@ public:
                 , m_block2_end(other.m_block2_end)
                 , m_in_block1(other.m_in_block1) {}
 
-            bool operator==(const any_iterator& other) const = default;
+            bool operator==(const any_iterator& other) const {
+                // Only the current position needs to be compared.
+                return m_current_iter == other.m_current_iter;
+            }
 
         private:
             friend struct ReadScope;
@@ -501,6 +511,8 @@ public:
      *               The size of this buffer MUST be a power of two.
      * @warning The user is responsible for ensuring that the lifetime of the
      *          provided buffer exceeds the lifetime of this queue object.
+     *          The user is also reponsible for the destruction of any elements
+     *          remaining in the buffer when it is no longer in use.
      */
     explicit LockFreeSpscQueue(std::span<T> buffer)
         : m_buffer(buffer), m_capacity(buffer.size()), m_capacity_mask(m_capacity - 1)
