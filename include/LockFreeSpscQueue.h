@@ -391,13 +391,13 @@ public:
          */
         bool try_push(const T& item)
         {
-            if (m_items_pushed_count >= m_total_reserved_size) return false;
-
-            if (m_items_pushed_count < m_block1.size()) {
-                m_block1[m_items_pushed_count] = item;
-            } else {
-                m_block2[m_items_pushed_count - m_block1.size()] = item;
+            if (m_items_pushed_count >= m_total_reserved_size) {
+                return false;
             }
+
+            // Construct a new object in its place by copying.
+            *get_next_slot() = item;
+
             m_items_pushed_count++;
             return true;
         }
@@ -405,13 +405,13 @@ public:
         // Overload for movable types
         bool try_push(T&& item)
         {
-            if (m_items_pushed_count >= m_total_reserved_size) return false;
-
-            if (m_items_pushed_count < m_block1.size()) {
-                m_block1[m_items_pushed_count] = std::move(item);
-            } else {
-                m_block2[m_items_pushed_count - m_block1.size()] = std::move(item);
+            if (m_items_pushed_count >= m_total_reserved_size) {
+                return false;
             }
+
+            // Construct a new object in its place by moving.
+            *get_next_slot() = std::move(item);
+
             m_items_pushed_count++;
             return true;
         }
@@ -433,9 +433,12 @@ public:
                 return false;
             }
 
-            T* slot_ptr = (m_items_pushed_count < m_block1.size())
-                        ? &m_block1[m_items_pushed_count]
-                        : &m_block2[m_items_pushed_count - m_block1.size()];
+            T* slot_ptr = get_next_slot();
+
+            // First, destroy the (potentially moved-from) object in the slot.
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                std::destroy_at(slot_ptr);
+            }
 
             // Construct the object directly in the queue's memory buffer.
             std::construct_at(slot_ptr, std::forward<Args>(args)...);
@@ -453,6 +456,7 @@ public:
         {
             if (m_owner_queue != nullptr) {
                 m_owner_queue->commit_write(m_items_pushed_count);
+                m_owner_queue = nullptr;
             }
         }
 
@@ -475,6 +479,12 @@ public:
             : m_owner_queue(owner)
             , m_block1(b1), m_block2(b2)
             , m_total_reserved_size(b1.size() + b2.size()) {}
+
+        T* get_next_slot() {
+            return (m_items_pushed_count < m_block1.size())
+                ? &m_block1[m_items_pushed_count]
+                : &m_block2[m_items_pushed_count - m_block1.size()];
+        }
 
         LockFreeSpscQueue* m_owner_queue = nullptr;
         std::span<T> m_block1;
