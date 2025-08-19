@@ -127,10 +127,23 @@ void batch_producer(LockFreeSpscQueue<Message>& queue)
         // Ask `try_write` to write the sub-batch. It will write as many items as
         // it can and return the count. The lambda handles the actual copy.
         items_written += queue.try_write(sub_batch.size(), [&](auto block1, auto block2) {
+            // --- Copy Semantics ---
+            // std::copy_n performs a copy-assignment for each element.
             std::copy_n(sub_batch.begin(), block1.size(), block1.begin());
             if (!block2.empty()) {
                 std::copy_n(sub_batch.begin() + block1.size(), block2.size(), block2.begin());
             }
+
+            // --- Move Semantics ---
+            // To perform a move, adapt the source iterator with `std::make_move_iterator`.
+            // The std::copy_n algorithm will then invoke the move-assignment operator.
+            // Note: the source container (`sub_batch` here) must be mutable.
+            //
+            // auto move_iter = std::make_move_iterator(sub_batch.begin());
+            // std::copy_n(move_iter, block1.size(), block1.begin());
+            // if (!block2.empty()) {
+            //     std::copy_n(move_iter + block1.size(), block2.size(), block2.begin());
+            // }
         });
 
         // If the queue was full, items_written won't increase, and we'll loop.
@@ -158,10 +171,13 @@ void low_level_batch_producer(LockFreeSpscQueue<Message>& queue,
         auto block2 = write_scope.get_block2();
 
         // Copy data into the contiguous memory blocks.
+        // Note: To move data, wrap the source iterator with `std::make_move_iterator`
+        // as in the example above.
         std::copy_n(data.begin(), block1.size(), block1.begin());
         if (!block2.empty()) {
             std::copy_n(data.begin() + block1.size(), block2.size(), block2.begin());
         }
+
     }
     // The write is automatically committed when `write_scope` is destroyed.
 }
@@ -282,15 +298,55 @@ Because the `Scope` objects are proper ranges, you can use them with the powerfu
 void algorithm_example(LockFreeSpscQueue<int>& queue)
 {
     // Use std::ranges::copy to fill a write scope from another container.
-    if (auto write_scope = queue.prepare_write(10)) {
+    if (auto write_scope = queue.prepare_write(10))
+    {
         std::vector<int> source_data(write_scope.get_items_written(), 42); // Fill with 42s
         std::ranges::copy(source_data, write_scope.begin());
     }
 
     // Use std::accumulate to sum all the items in a read scope.
-    if (auto read_scope = queue.prepare_read(10)) {
+    if (auto read_scope = queue.prepare_read(10))
+    {
         long long sum = std::accumulate(read_scope.begin(), read_scope.end(), 0LL);
         std::cout << "Sum of items in queue: " << sum << "\n";
+    }
+
+    // -- More Examples --
+    std::vector<int> source_data(16, 42); // A vector with 16 items of value 42.
+
+    size_t total_written = 0;
+    while (total_written < source_data.size())
+    {
+        // Ask the queue for space for the remaining items.
+        if (auto write_scope = queue.prepare_write(source_data.size() - total_written))
+        {
+            // The number of slots we were actually provided.
+            const size_t can_write_count = write_scope.get_items_written();
+
+            // --- Copy Semantics ---
+            // Create a sub-span of our source data that is _exactly_ the size of the
+            // space we were granted.
+            std::span<const int> source_sub_batch(source_data.data() + total_written,
+                                                  can_write_count);
+
+            // Copy the sub-batch into the write_scope's range.
+            std::ranges::copy(source_sub_batch, write_scope.begin());
+
+            // --- Move Semantics ---
+            // To move instead of copy, simply adapt the source range with `std::views::move`.
+            // Note: the source container (`source_data` here) must be mutable.
+            //
+            // auto source_sub_range = std::span(source_data).subspan(total_written,
+            //                                                        can_write_count);
+            // std::ranges::copy(source_sub_range | std::views::move, write_scope.begin());
+
+            total_written += can_write_count;
+        }
+        else
+        {
+            // The queue was full, wait a moment and try again.
+            std::this_thread::yield();
+        }
     }
 }
 ```
