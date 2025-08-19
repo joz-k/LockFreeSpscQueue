@@ -197,18 +197,22 @@ public:
 
     /**
      * @brief An RAII scope object representing a prepared read operation.
-     * @details Provides direct `std::span` access to the readable blocks in the
-     *          underlying buffer. The transaction is committed when this object
-     *          is destroyed. This object also satisfies the `std::ranges::range`
-     *          concept, allowing direct iteration. It is move-only.
+     * @details Provides direct `std::span` access to readable blocks in the
+     *          underlying buffer. The transaction is committed when this
+     *          object is destroyed. It also satisfies the `std::ranges::range`
+     *          concept, allowing direct iteration. If the scope is non-const,
+     *          it allows "moving" elements out of the queue. If it is const, it
+     *          provides read-only access. It is move-only.
      * @warning The user MUST treat all data within the returned spans as read.
      *          The full `get_items_read()` amount will be committed, advancing
      *          the read pointer and making the space available for future writes.
      */
     struct ReadScope
     {
-        // --- Custom Iterator for ReadScope ---
-        class iterator
+        // --- Custom Iterators (const and non-const) ---
+
+        /** @brief A read-only iterator for the ReadScope. */
+        class const_iterator
         {
         public:
             using iterator_category = std::forward_iterator_tag;
@@ -218,11 +222,11 @@ public:
             using reference         = const T&;
             using SpanConstIterator = typename std::span<const T>::iterator;
 
-            iterator() = default;
+            const_iterator() = default;
             reference operator*() const { return *m_current_iter; }
             pointer operator->() const { return &(*m_current_iter); }
 
-            iterator& operator++() {
+            const_iterator& operator++() {
                 ++m_current_iter;
                 if (m_in_block1 && m_current_iter == m_block1_end) {
                     m_current_iter = m_block2_begin;
@@ -230,26 +234,26 @@ public:
                 }
                 return *this;
             }
-            iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
-            bool operator==(const iterator& other) const = default;
+            const_iterator operator++(int) { const_iterator tmp = *this; ++(*this); return tmp; }
+            bool operator==(const const_iterator& other) const = default;
 
-        private:
+        protected: // Protected so the mutable iterator can access them
             friend struct ReadScope;
-            iterator(SpanConstIterator b1_begin, SpanConstIterator b1_end,
-                     SpanConstIterator b2_begin, SpanConstIterator b2_end,
-                     bool is_begin)
+            const_iterator(SpanConstIterator b1_begin, SpanConstIterator b1_end,
+                           SpanConstIterator b2_begin, SpanConstIterator b2_end,
+                           bool is_begin)
                 : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
             {
                 if (is_begin) {
-                    if (b1_begin != b1_end) {
+                    if (b1_begin != b1_end) { // If block 1 is not empty, start there.
                         m_current_iter = b1_begin;
                         m_in_block1    = true;
-                    } else {
+                    } else { // Otherwise, start at block 2.
                         m_current_iter = b2_begin;
                         m_in_block1    = false;
                     }
-                } else {
-                    m_current_iter = m_block2_end;
+                } else { // This is the end() sentinel iterator.
+                    m_current_iter = m_block2_end; // The end is always the end of block 2.
                     m_in_block1    = false;
                 }
             }
@@ -261,30 +265,68 @@ public:
             bool m_in_block1 = false;
         };
 
-        // --- Making ReadScope a C++20 Range ---
-        [[nodiscard]] iterator begin() const {
+        /** @brief A mutable iterator for the ReadScope, enabling moves. */
+        class iterator : public const_iterator
+        {
+        public:
+            using value_type = T;
+            using pointer    = T*;
+            using reference  = T&;
+
+            using const_iterator::const_iterator; // Inherit constructors
+
+            reference operator*() const {
+                return const_cast<reference>(const_iterator::operator*());
+            }
+            pointer operator->() const {
+                return const_cast<pointer>(const_iterator::operator->());
+            }
+        };
+
+        // --- Making ReadScope a C++20 Range (with const and non-const overloads) ---
+        [[nodiscard]] iterator begin() {
             auto b1 = get_block1();
             auto b2 = get_block2();
             return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
         }
-        [[nodiscard]] iterator end() const {
+        [[nodiscard]] iterator end() {
             auto b1 = get_block1();
             auto b2 = get_block2();
             return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
         }
+        [[nodiscard]] const_iterator begin() const {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return const_iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+        }
+        [[nodiscard]] const_iterator end() const {
+            auto b1 = get_block1();
+            auto b2 = get_block2();
+            return const_iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+        }
 
-        /** @brief Returns a span representing the first contiguous block to read from. */
-        [[nodiscard]] std::span<const T> get_block1() const
-        {
+        // --- Block Accessors with const and non-const Overloads ---
+        /** @brief Returns a mutable span to the first contiguous block. Enables moving. */
+        [[nodiscard]] std::span<T> get_block1() {
+            return m_owner_queue
+                ? m_owner_queue->m_buffer.subspan(start_index1, block_size1)
+                : std::span<T>{};
+        }
+        /** @brief Returns a read-only span to the first contiguous block. */
+        [[nodiscard]] std::span<const T> get_block1() const {
             return m_owner_queue
                 ? m_owner_queue->m_buffer.subspan(start_index1, block_size1)
                 : std::span<const T>{};
         }
 
-        /** @brief Returns a span representing the second contiguous block to
-         *         read from (for wrap-around). */
-        [[nodiscard]] std::span<const T> get_block2() const
-        {
+        /** @brief Returns a mutable span to the second contiguous block. Enables moving. */
+        [[nodiscard]] std::span<T> get_block2() {
+            return m_owner_queue && block_size2 > 0
+                ? m_owner_queue->m_buffer.subspan(start_index2, block_size2)
+                : std::span<T>{};
+        }
+        /** @brief Returns a read-only span to the second contiguous block. */
+        [[nodiscard]] std::span<const T> get_block2() const {
             return m_owner_queue && block_size2 > 0
                 ? m_owner_queue->m_buffer.subspan(start_index2, block_size2)
                 : std::span<const T>{};
