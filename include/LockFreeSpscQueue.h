@@ -95,7 +95,6 @@ public:
                 return *this;
             }
             iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
-            bool operator==(const iterator& other) const = default;
             bool operator==(const iterator& other) const {
                 // For two iterators to be equal, they only need to point to the same element.
                 // The other members define the boundaries of the range, which are guaranteed
