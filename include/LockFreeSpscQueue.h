@@ -210,23 +210,21 @@ public:
     struct ReadScope
     {
         // --- Custom Iterators (const and non-const) ---
-
-        /** @brief A read-only iterator for the ReadScope. */
-        class const_iterator
+        template<bool IsConst>
+        class any_iterator
         {
         public:
-            using iterator_category = std::forward_iterator_tag;
-            using value_type        = const T;
-            using difference_type   = std::ptrdiff_t;
-            using pointer           = const T*;
-            using reference         = const T&;
-            using SpanConstIterator = typename std::span<const T>::iterator;
+            using value_type      = std::conditional_t<IsConst, const T, T>;
+            using difference_type = std::ptrdiff_t;
+            using pointer         = value_type*;
+            using reference       = value_type&;
+            using SpanIterator    = typename std::span<value_type>::iterator;
 
-            const_iterator() = default;
+            any_iterator() = default;
             reference operator*() const { return *m_current_iter; }
             pointer operator->() const { return &(*m_current_iter); }
 
-            const_iterator& operator++() {
+            any_iterator& operator++() {
                 ++m_current_iter;
                 if (m_in_block1 && m_current_iter == m_block1_end) {
                     m_current_iter = m_block2_begin;
@@ -234,14 +232,28 @@ public:
                 }
                 return *this;
             }
-            const_iterator operator++(int) { const_iterator tmp = *this; ++(*this); return tmp; }
-            bool operator==(const const_iterator& other) const = default;
+            any_iterator operator++(int) { any_iterator tmp = *this; ++(*this); return tmp; }
 
-        protected: // Protected so the mutable iterator can access them
+            // Allow conversion from mutable iterator to const_iterator
+            template<bool OtherIsConst>
+            requires(   IsConst
+                     && !OtherIsConst
+                     && std::convertible_to<typename any_iterator<OtherIsConst>::SpanIterator,
+                                                                  SpanIterator>)
+            any_iterator(const any_iterator<OtherIsConst>& other)
+                : m_current_iter(other.m_current_iter)
+                , m_block1_end(other.m_block1_end)
+                , m_block2_begin(other.m_block2_begin)
+                , m_block2_end(other.m_block2_end)
+                , m_in_block1(other.m_in_block1) {}
+
+            bool operator==(const any_iterator& other) const = default;
+
+        private:
             friend struct ReadScope;
-            const_iterator(SpanConstIterator b1_begin, SpanConstIterator b1_end,
-                           SpanConstIterator b2_begin, SpanConstIterator b2_end,
-                           bool is_begin)
+            any_iterator(SpanIterator b1_begin, SpanIterator b1_end,
+                         SpanIterator b2_begin, SpanIterator b2_end,
+                         bool is_begin)
                 : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
             {
                 if (is_begin) {
@@ -258,38 +270,18 @@ public:
                 }
             }
 
-            SpanConstIterator m_current_iter;
-            SpanConstIterator m_block1_end;
-            SpanConstIterator m_block2_begin;
-            SpanConstIterator m_block2_end;
+            SpanIterator m_current_iter;
+            SpanIterator m_block1_end;
+            SpanIterator m_block2_begin;
+            SpanIterator m_block2_end;
             bool m_in_block1 = false;
+
+            template<bool> friend class any_iterator; // Allow conversion access
         };
 
         /** @brief A mutable iterator for the ReadScope, enabling moves. */
-        class iterator : public const_iterator
-        {
-        public:
-            using value_type  = T;
-            using pointer     = T*;
-            using reference   = T&;
-            using SpanIterator = typename std::span<T>::iterator;
-
-            // Provide an explicit constructor that takes mutable iterators.
-            // This constructor correctly delegates to the const_iterator's base
-            // constructor, allowing the valid conversion from iterator-to-T
-            // to iterator-to-const-T to happen.
-            iterator(SpanIterator b1_begin, SpanIterator b1_end,
-                     SpanIterator b2_begin, SpanIterator b2_end,
-                     bool is_begin)
-                : const_iterator(b1_begin, b1_end, b2_begin, b2_end, is_begin) {}
-
-            reference operator*() const {
-                return const_cast<reference>(const_iterator::operator*());
-            }
-            pointer operator->() const {
-                return const_cast<pointer>(const_iterator::operator->());
-            }
-        };
+        using iterator       = any_iterator<false>;
+        using const_iterator = any_iterator<true>;
 
         // --- Making ReadScope a C++20 Range (with const and non-const overloads) ---
         [[nodiscard]] iterator begin() {
