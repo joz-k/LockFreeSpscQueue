@@ -230,13 +230,33 @@ void low_level_batch_consumer(LockFreeSpscQueue<Message>& queue)
     if (read_scope.get_items_read() > 0)
     {
         // Copy the data from the queue's buffer into our local vector.
+        // On a non-const scope returns a mutable std::span<T>.
         auto block1 = read_scope.get_block1();
+        auto block2 = read_scope.get_block2();
+
+        consumed_data.reserve(read_scope.get_items_read());
+
+        // Copy block1
         consumed_data.insert(consumed_data.end(), block1.begin(), block1.end());
 
-        auto block2 = read_scope.get_block2();
+        // Copy block2 if needed
         if (!block2.empty()) {
             consumed_data.insert(consumed_data.end(), block2.begin(), block2.end());
         }
+
+        // --- Move Semantics ---
+        // To move data out of the queue, use std::make_move_iterator. This is highly
+        // efficient for objects that are expensive to copy.
+        //
+        // std::copy(std::make_move_iterator(block1.begin()),
+        //           std::make_move_iterator(block1.end()),
+        //           std::back_inserter(consumed_data));
+        //
+        // if (!block2.empty()) {
+        //     std::copy(std::make_move_iterator(block2.begin()),
+        //               std::make_move_iterator(block2.end()),
+        //               std::back_inserter(consumed_data));
+        // }
     }
     // The read is automatically committed when `read_scope` is destroyed.
 }
