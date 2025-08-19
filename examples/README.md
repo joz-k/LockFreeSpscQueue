@@ -38,30 +38,74 @@ There are three primary ways to write to the queue, each suited for a different 
 
 ### High-Frequency Writes: `WriteTransaction`
 
-This is the **highest-performance method** for producers that generate many individual items in a tight loop. It amortizes the cost of atomic operations over many fast, non-atomic pushes.
+This is the **highest-performance API** for producers that generate many individual items in a tight loop. It amortizes the high cost of atomic synchronization over many fast, non-atomic pushes and emplaces.
+
+The process involves three steps:
+1.  Start a transaction for a batch of items using `try_start_write()`.
+2.  If successful, use the transaction object's ultra-fast `try_emplace()` or `try_push()` methods to add items to the reserved space.
+3.  The transaction automatically commits the items that were successfully added when its `WriteTransaction` object is destroyed.
+
+#### The `try_emplace` Method (Recommended for Complex Objects)
+
+`try_emplace` is the most efficient way to add a complex object to the queue. It constructs the object **in-place** directly in the queue's memory, avoiding any temporary objects or expensive move operations.
+
+```cpp
+#include <string>
+#include <vector>
+
+struct MyData {
+    std::string s;
+    std::vector<int> v;
+    MyData(const std::string& str, size_t n) : s(str), v(n) {}
+};
+
+void emplace_producer(LockFreeSpscQueue<MyData>& queue)
+{
+    // Try to start a transaction for up to 16 items.
+    if (auto transaction = queue.try_start_write(16))
+    {
+        // We got a reservation! Emplace items directly into it.
+        // This is extremely fast, as there are no temporary MyData objects.
+        transaction->try_emplace("hello", 100);
+        transaction->try_emplace("world", 200);
+
+        // 'transaction' automatically commits the 2 new items when it goes out of scope.
+    }
+}
+```
+
+#### The `try_push` Method (For Simple Types or Pre-existing Objects)
+
+`try_push` is ideal for trivial types (like `int` or `float`) or when you already have an existing object that you want to move into the queue.
 
 ```cpp
 void high_frequency_producer(LockFreeSpscQueue<Message>& queue)
 {
-    for (int i = 0; i < 100; ) {
-        // 1. Try to start a transaction for a batch of up to 16 items.
+    int next_item = 0;
+
+    // Keep writing until we've sent 100 items.
+    while (next_item < 100)
+    {
+        // 1. Try to start a transaction for a batch of up to 32 items.
         //    This returns an optional; it will be empty if the queue is too full.
-        if (auto transaction = queue.try_start_write(16)) {
+        if (auto transaction = queue.try_start_write(32))
+        {
             // 2. We got a reservation! Push items into it.
-            //    This `try_push` is extremely fast (non-atomic).
-            while (i < 100 && transaction->try_push({i, "some data"})) {
+            //    Use try_push for this simple integer type.
+            while (next_item < 100 && transaction->try_push(next_item)) {
                 // Item was successfully pushed into the transaction's reserved space.
-                i++;
+                next_item++;
             }
             // 3. The transaction automatically commits the items that were
             //    pushed when it goes out of scope here.
         } else {
-            // Queue was too full to even start a transaction, yield to the consumer.
+            // The queue was too full to even start a transaction, yield to the consumer.
             std::this_thread::yield();
         }
     }
 }
 ```
+
 *Move semantics are also supported: `transaction->try_push(std::move(my_message));`*
 
 ### Batch Writes (Convenience): `try_write`
