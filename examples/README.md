@@ -355,12 +355,17 @@ void algorithm_example(LockFreeSpscQueue<int>& queue)
             std::ranges::copy(source_sub_batch, write_scope.begin());
 
             // --- Move Semantics ---
-            // To move instead of copy, simply adapt the source range with `std::views::move`.
-            // Note: the source container (`source_data` here) must be mutable.
-            //
-            // auto source_sub_range = std::span(source_data).subspan(total_written,
-            //                                                        can_write_count);
-            // std::ranges::copy(source_sub_range | std::views::move, write_scope.begin());
+            // To move instead of copy, you can adapt the source range.
+            // The idiomatic C++20 approach is to use `std::views::transform`. This applies
+            // std::move to each element before the copy algorithm uses it.
+            std::span source_sub_range(source_data.data() + total_written, can_write_count);
+            std::ranges::copy(source_sub_range | std::views::transform(std::move), write_scope.begin());
+
+            // Note: C++23 introduces `std::views::as_rvalue`, which is a more semantically
+            // precise tool for this operation.
+            auto source_sub_range = std::span(source_data).subspan(total_written,
+                                                                   can_write_count);
+            std::ranges::copy(source_sub_range | std::views::as_rvalue, write_scope.begin());
 
             total_written += can_write_count;
         }
