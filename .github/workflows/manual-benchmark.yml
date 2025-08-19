@@ -26,36 +26,35 @@ jobs:
 
     steps:
       # --- Print System Hardware Information ---
-      - name: Print System Hardware Information
+      - name: Print Linux Hardware Info
+        if: runner.os == 'Linux'
         run: |
-          echo "=============================================================================="
-          echo "Hardware Information for ${{ matrix.os }}"
-          echo "=============================================================================="
+          echo "==================== Hardware Information ===================="
+          echo "--- CPU ---"
+          lscpu
+          echo -e "\n--- Memory ---"
+          free -h
+          echo "=========================================================="
 
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            echo "--- CPU Information ---"
-            lscpu
-            echo -e "\n--- Memory Information ---"
-            free -h
+      - name: Print macOS Hardware Info
+        if: runner.os == 'macOS'
+        run: |
+          echo "==================== Hardware Information ===================="
+          echo "--- CPU ---"
+          sysctl -a | grep machdep.cpu
+          echo -e "\n--- Memory ---"
+          sysctl hw.memsize
+          echo "=========================================================="
 
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            echo "--- System Information ---"
-            sysctl -a | grep machdep.cpu
-            echo -e "\n--- Memory Information ---"
-            sysctl hw.memsize
-
-          elif [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "--- CPU Information ---"
-            wmic cpu get Name, NumberOfCores, NumberOfLogicalProcessors /format:list
-            echo "--- Memory Information ---"
-            wmic ComputerSystem get TotalPhysicalMemory /format:list
-          fi
-
-          echo "=============================================================================="
-        # This uses the default shell for each runner, which is bash on
-        # Linux/macOS and PowerShell on Windows.  The syntax here is
-        # bash-compatible. For Windows, GitHub Actions uses a bash shell
-        # wrapper.
+      - name: Print Windows Hardware Info
+        if: runner.os == 'Windows'
+        run: |
+          echo "==================== Hardware Information ===================="
+          echo "--- CPU ---"
+          wmic cpu get Name, NumberOfCores, NumberOfLogicalProcessors /format:list
+          echo "--- Memory ---"
+          wmic ComputerSystem get TotalPhysicalMemory /format:list
+          echo "=========================================================="
 
       # Step 2: Check out the specific Git ref provided by the user.
       - name: Check out repository
