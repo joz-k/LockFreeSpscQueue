@@ -269,11 +269,19 @@ public:
         class iterator : public const_iterator
         {
         public:
-            using value_type = T;
-            using pointer    = T*;
-            using reference  = T&;
+            using value_type  = T;
+            using pointer     = T*;
+            using reference   = T&;
+            using SpanIterator = typename std::span<T>::iterator;
 
-            using const_iterator::const_iterator; // Inherit constructors
+            // Provide an explicit constructor that takes mutable iterators.
+            // This constructor correctly delegates to the const_iterator's base
+            // constructor, allowing the valid conversion from iterator-to-T
+            // to iterator-to-const-T to happen.
+            iterator(SpanIterator b1_begin, SpanIterator b1_end,
+                     SpanIterator b2_begin, SpanIterator b2_end,
+                     bool is_begin)
+                : const_iterator(b1_begin, b1_end, b2_begin, b2_end, is_begin) {}
 
             reference operator*() const {
                 return const_cast<reference>(const_iterator::operator*());
