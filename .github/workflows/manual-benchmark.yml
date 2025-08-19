@@ -1,0 +1,93 @@
+# The name of the workflow, displayed in the "Actions" tab.
+name: Run Comparative Benchmarks (Manual)
+
+# This section defines the trigger for the workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: 'The Git branch, tag, or commit SHA to run the benchmark on.'
+        required: true
+        default: 'main'
+
+jobs:
+  # This single job will run in parallel on all three platforms.
+  benchmark:
+    # The name of the job will be dynamic, including the OS name.
+    name: Benchmark on ${{ matrix.os }}
+
+    # Use a matrix strategy to run on all three major platforms.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+
+    # Run on the OS specified by the current matrix configuration.
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # --- Print System Hardware Information ---
+      - name: Print System Hardware Information
+        run: |
+          echo "=============================================================================="
+          echo "Hardware Information for ${{ matrix.os }}"
+          echo "=============================================================================="
+
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            echo "--- CPU Information ---"
+            lscpu
+            echo -e "\n--- Memory Information ---"
+            free -h
+
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            echo "--- System Information ---"
+            sysctl -a | grep machdep.cpu
+            echo -e "\n--- Memory Information ---"
+            sysctl hw.memsize
+
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "--- CPU Information ---"
+            wmic cpu get Name, NumberOfCores, NumberOfLogicalProcessors /format:list
+            echo "--- Memory Information ---"
+            wmic ComputerSystem get TotalPhysicalMemory /format:list
+          fi
+
+          echo "=============================================================================="
+        # This uses the default shell for each runner, which is bash on
+        # Linux/macOS and PowerShell on Windows.  The syntax here is
+        # bash-compatible. For Windows, GitHub Actions uses a bash shell
+        # wrapper.
+
+      # Step 2: Check out the specific Git ref provided by the user.
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git-ref }}
+
+      # Step 3: Install latest LLVM/Clang on macOS using Homebrew.
+      - name: Install latest Clang on macOS via Homebrew
+        if: matrix.os == 'macos-14'
+        run: |
+          brew install llvm
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+
+      # Step 4: Configure CMake for a Release build with the comparison benchmark enabled.
+      - name: Configure CMake
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DSPSC_QUEUE_BUILD_BENCHMARK_COMPARE=ON
+
+      # Step 5: Build the project.
+      - name: Build Project
+        run: cmake --build build --config Release
+
+      # Step 6: Run the benchmark.
+      - name: Run on Linux/macOS
+        if: runner.os != 'Windows'
+        run: ./build/benchmarks/queue_comparison_benchmark
+
+      - name: Run on Windows
+        if: runner.os == 'Windows'
+        run: .\build\benchmarks\Release\queue_comparison_benchmark.exe
+
