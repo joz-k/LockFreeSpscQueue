@@ -374,6 +374,34 @@ public:
             return true;
         }
 
+        /**
+         * @brief Constructs an item in-place directly in the queue's buffer.
+         * @details This is the most efficient way to add a complex object to the queue,
+         *          as it avoids creating any temporary objects or performing move operations.
+         *          It uses `std::construct_at` for maximum safety and correctness.
+         * @tparam Args The types of arguments to forward to the object's constructor.
+         * @return True if the item was emplaced, false if the transaction's
+         *         reserved space is full.
+         */
+        template<typename... Args>
+        bool try_emplace(Args&&... args)
+            noexcept(std::is_nothrow_constructible_v<T, Args...>)
+        {
+            if (m_items_pushed_count >= m_total_reserved_size) {
+                return false;
+            }
+
+            T* slot_ptr = (m_items_pushed_count < m_block1.size())
+                        ? &m_block1[m_items_pushed_count]
+                        : &m_block2[m_items_pushed_count - m_block1.size()];
+
+            // Construct the object directly in the queue's memory buffer.
+            std::construct_at(slot_ptr, std::forward<Args>(args)...);
+
+            m_items_pushed_count++;
+            return true;
+        }
+
         /** @brief Returns the total number of items this transaction can hold. */
         [[nodiscard]] size_t capacity() const { return m_total_reserved_size; }
         /** @brief Returns how many items have been pushed so far. */
