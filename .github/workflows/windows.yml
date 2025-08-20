@@ -17,10 +17,7 @@ jobs:
       - name: Build Project
         run: cmake --build build --config Debug
       - name: Run Tests
-        # Using the '--exclude-label' flag to skip the problematic tests on
-        # the Windows GitHub worker.
-        # This command will now run all tests *except* those flagged.
         run: |
           cd build
-          ctest -C Debug --verbose -LE "ci_flaky"
+          ctest -C Debug --verbose
 
