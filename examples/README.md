@@ -276,7 +276,10 @@ This is a clear and idiomatic way to fill the reserved slots in a write transact
 void range_based_producer(LockFreeSpscQueue<int>& queue)
 {
     // Ask to reserve space for 10 items.
-    if (auto write_scope = queue.prepare_write(10)) {
+    auto write_scope = queue.prepare_write(10);
+
+    // Only proceed if we were actually granted space.
+    if (write_scope.get_items_written() > 0) {
         // The WriteScope object is directly iterable.
         // We can iterate over the empty slots and write to them.
         int i = 0;
@@ -296,7 +299,10 @@ This is the simplest way to consume data from the queue. The custom iterator han
 void range_based_consumer(LockFreeSpscQueue<int>& queue)
 {
     // Ask to read up to 16 items at a time.
-    if (auto read_scope = queue.prepare_read(16))
+    auto read_scope = queue.prepare_read(16);
+
+    // Only proceed if there are items to read.
+    if (read_scope.get_items_read() > 0)
     {
         // The ReadScope object is a C++20 range.
         // The for loop will seamlessly iterate over block1 and then block2.
@@ -316,18 +322,21 @@ Because the `Scope` objects are proper ranges, you can use them with the powerfu
 ```cpp
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::ranges::copy
+#include <ranges>    // For std::views
 
 void algorithm_example(LockFreeSpscQueue<int>& queue)
 {
     // Use std::ranges::copy to fill a write scope from another container.
-    if (auto write_scope = queue.prepare_write(10))
+    auto write_scope_1 = queue.prepare_write(10);
+    if (write_scope_1.get_items_written() > 0)
     {
-        std::vector<int> source_data(write_scope.get_items_written(), 42); // Fill with 42s
-        std::ranges::copy(source_data, write_scope.begin());
+        std::vector<int> source_data(write_scope_1.get_items_written(), 42); // Fill with 42s
+        std::ranges::copy(source_data, write_scope_1.begin());
     }
 
     // Use std::accumulate to sum all the items in a read scope.
-    if (auto read_scope = queue.prepare_read(10))
+    auto read_scope = queue.prepare_read(10);
+    if (read_scope.get_items_read() > 0)
     {
         long long sum = std::accumulate(read_scope.begin(), read_scope.end(), 0LL);
         std::cout << "Sum of items in queue: " << sum << "\n";
@@ -340,32 +349,33 @@ void algorithm_example(LockFreeSpscQueue<int>& queue)
     while (total_written < source_data.size())
     {
         // Ask the queue for space for the remaining items.
-        if (auto write_scope = queue.prepare_write(source_data.size() - total_written))
-        {
-            // The number of slots we were actually provided.
-            const size_t can_write_count = write_scope.get_items_written();
+        auto write_scope_2 = queue.prepare_write(source_data.size() - total_written);
+        // The number of slots we were actually provided.
+        const size_t can_write_count = write_scope_2.get_items_written();
 
+        if (can_write_count > 0)
+        {
             // --- Copy Semantics ---
             // Create a sub-span of our source data that is _exactly_ the size of the
             // space we were granted.
-            std::span<const int> source_sub_batch(source_data.data() + total_written,
-                                                  can_write_count);
+            std::span source_sub_batch(source_data.data() + total_written,
+                                       can_write_count);
 
             // Copy the sub-batch into the write_scope's range.
-            std::ranges::copy(source_sub_batch, write_scope.begin());
+            std::ranges::copy(source_sub_batch, write_scope_2.begin());
 
             // --- Move Semantics ---
-            // To move instead of copy, you can adapt the source range.
-            // The idiomatic C++20 approach is to use `std::views::transform`. This applies
-            // std::move to each element before the copy algorithm uses it.
-            std::span source_sub_range(source_data.data() + total_written, can_write_count);
-            std::ranges::copy(source_sub_range | std::views::transform(std::move), write_scope.begin());
-
-            // Note: C++23 introduces `std::views::as_rvalue`, which is a more semantically
-            // precise tool for this operation.
-            auto source_sub_range = std::span(source_data).subspan(total_written,
-                                                                   can_write_count);
-            std::ranges::copy(source_sub_range | std::views::as_rvalue, write_scope.begin());
+            // To move instead of copy, adapt the source range. Note: the source container
+            // (`source_sub_batch` here) must be mutable.
+            //
+            // The idiomatic C++20 approach is to use `std::views::transform` with a lambda.
+            //
+            // auto move_view = source_sub_batch | std::views::transform([](auto&& i){ return std::move(i); });
+            // std::ranges::copy(move_view, write_scope_2.begin());
+            //
+            // Note: C++23 introduces `std::views::as_rvalue`, a more direct tool.
+            //
+            // std::ranges::copy(source_sub_batch | std::views::as_rvalue, write_scope_2.begin());
 
             total_written += can_write_count;
         }
