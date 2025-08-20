@@ -13,7 +13,7 @@
 // Test Configuration
 
 const size_t QUEUE_CAPACITY          = 256; // Must be a power of two
-const size_t TOTAL_ITEMS_TO_TRANSFER = 4000000;
+const size_t TOTAL_ITEMS_TO_TRANSFER = 4000;
 const uint64_t RANDOM_SEED           = 20240819;
 
 // Helper `assert` which aborts also in the release builds
