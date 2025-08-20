@@ -22,5 +22,5 @@ jobs:
         # This command will now run all tests *except* those flagged.
         run: |
           cd build
-          ctest -C Debug --verbose --exclude-label "ci_flaky"
+          ctest -C Debug --verbose -LE "ci_flaky"
 
