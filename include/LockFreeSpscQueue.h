@@ -234,11 +234,7 @@ public:
             any_iterator operator++(int) { any_iterator tmp = *this; ++(*this); return tmp; }
 
             // Allow conversion from mutable iterator to const_iterator
-            template<bool OtherIsConst>
-            requires(   IsConst
-                     && !OtherIsConst
-                     && std::convertible_to<typename any_iterator<OtherIsConst>::SpanIterator,
-                                                                  SpanIterator>)
+            template<bool OtherIsConst, typename = std::enable_if_t<IsConst && !OtherIsConst>>
             any_iterator(const any_iterator<OtherIsConst>& other)
                 : m_current_ptr(other.m_current_ptr)
                 , m_block1_end_ptr(other.m_block1_end_ptr)
