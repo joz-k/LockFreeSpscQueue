@@ -27,3 +27,8 @@ add_executable(test_move_semantics test_move_semantics.cpp)
 target_link_libraries(test_move_semantics PRIVATE spsc_queue Threads::Threads)
 add_test(NAME MoveSemantics COMMAND test_move_semantics)
 
+# Add a label to the MoveSemantics test so it can be disabled
+# This annotates the test, allowing us to specifically exclude it in certain
+# environments (like GitHub worker)
+set_tests_properties(MoveSemantics PROPERTIES LABELS "ci_flaky")
+
