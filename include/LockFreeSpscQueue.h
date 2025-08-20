@@ -80,16 +80,15 @@ public:
             using difference_type   = std::ptrdiff_t;
             using pointer           = T*;
             using reference         = T&;
-            using SpanIterator      = typename std::span<T>::iterator;
 
             iterator() = default;
-            reference operator*() const { return *m_current_iter; }
-            pointer operator->() const { return &(*m_current_iter); }
+            reference operator*() const { return *m_current_ptr; }
+            pointer operator->() const { return m_current_ptr; }
 
             iterator& operator++() {
-                ++m_current_iter;
-                if (m_in_block1 && m_current_iter == m_block1_end) {
-                    m_current_iter = m_block2_begin;
+                ++m_current_ptr;
+                if (m_in_block1 && m_current_ptr == m_block1_end_ptr) {
+                    m_current_ptr = m_block2_begin_ptr;
                     m_in_block1 = false;
                 }
                 return *this;
@@ -100,47 +99,41 @@ public:
                 // The other members define the boundaries of the range, which are guaranteed
                 // to be the same if the iterators originate from the same WriteScope object,
                 // a precondition for valid comparison.
-                return m_current_iter == other.m_current_iter;
+                return m_current_ptr == other.m_current_ptr;
             }
 
         private:
             friend struct WriteScope;
-            iterator(SpanIterator b1_begin, SpanIterator b1_end,
-                     SpanIterator b2_begin, SpanIterator b2_end,
-                     bool is_begin)
-                : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
+            iterator(std::span<T> b1, std::span<T> b2, bool is_begin)
+                : m_block1_end_ptr(b1.data() + b1.size())
+                , m_block2_begin_ptr(b2.data())
             {
                 if (is_begin) {
-                    if (b1_begin != b1_end) { // If block1 is not empty, start there.
-                        m_current_iter = b1_begin;
-                        m_in_block1    = true;
+                    if (!b1.empty()) { // If block1 is not empty, start there.
+                        m_current_ptr = b1.data();
+                        m_in_block1   = true;
                     } else { // Otherwise, start at block2.
-                        m_current_iter = b2_begin;
-                        m_in_block1    = false;
+                        m_current_ptr = b2.data();
+                        m_in_block1   = false;
                     }
                 } else { // This is the end() sentinel iterator.
-                    m_current_iter = m_block2_end; // The end is always the end of block2.
-                    m_in_block1    = false;
+                    m_current_ptr = b2.data() + b2.size();
+                    m_in_block1   = false;
                 }
             }
 
-            SpanIterator m_current_iter;
-            SpanIterator m_block1_end;
-            SpanIterator m_block2_begin;
-            SpanIterator m_block2_end;
+            pointer m_current_ptr      = nullptr;
+            pointer m_block1_end_ptr   = nullptr;
+            pointer m_block2_begin_ptr = nullptr;
             bool m_in_block1 = false;
         };
 
         // --- Making WriteScope a C++20 Range ---
         [[nodiscard]] iterator begin() {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+            return iterator(get_block1(), get_block2(), true);
         }
         [[nodiscard]] iterator end() {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+            return iterator(get_block1(), get_block2(), false);
         }
 
         /** @brief Returns a span representing the first contiguous block to write to. */
@@ -224,17 +217,17 @@ public:
             using difference_type = std::ptrdiff_t;
             using pointer         = value_type*;
             using reference       = value_type&;
-            using SpanIterator    = typename std::span<value_type>::iterator;
+            using Span            = std::span<value_type>;
 
             any_iterator() = default;
-            reference operator*() const { return *m_current_iter; }
-            pointer operator->() const { return &(*m_current_iter); }
+            reference operator*() const { return *m_current_ptr; }
+            pointer operator->() const { return m_current_ptr; }
 
             any_iterator& operator++() {
-                ++m_current_iter;
-                if (m_in_block1 && m_current_iter == m_block1_end) {
-                    m_current_iter = m_block2_begin;
-                    m_in_block1    = false;
+                ++m_current_ptr;
+                if (m_in_block1 && m_current_ptr == m_block1_end_ptr) {
+                    m_current_ptr = m_block2_begin_ptr;
+                    m_in_block1   = false;
                 }
                 return *this;
             }
@@ -247,43 +240,42 @@ public:
                      && std::convertible_to<typename any_iterator<OtherIsConst>::SpanIterator,
                                                                   SpanIterator>)
             any_iterator(const any_iterator<OtherIsConst>& other)
-                : m_current_iter(other.m_current_iter)
-                , m_block1_end(other.m_block1_end)
-                , m_block2_begin(other.m_block2_begin)
-                , m_block2_end(other.m_block2_end)
+                : m_current_ptr(other.m_current_ptr)
+                , m_block1_end_ptr(other.m_block1_end_ptr)
+                , m_block2_begin_ptr(other.m_block2_begin_ptr)
                 , m_in_block1(other.m_in_block1) {}
 
             bool operator==(const any_iterator& other) const {
                 // Only the current position needs to be compared.
-                return m_current_iter == other.m_current_iter;
+                return m_current_ptr == other.m_current_ptr;
             }
 
         private:
             friend struct ReadScope;
-            any_iterator(SpanIterator b1_begin, SpanIterator b1_end,
-                         SpanIterator b2_begin, SpanIterator b2_end,
-                         bool is_begin)
-                : m_block1_end(b1_end), m_block2_begin(b2_begin), m_block2_end(b2_end)
+            template<bool> friend class any_iterator; // Allow conversion access
+
+            any_iterator(Span b1, Span b2, bool is_begin)
+                : m_block1_end_ptr(b1.data() + b1.size())
+                , m_block2_begin_ptr(b2.data())
             {
                 if (is_begin) {
-                    if (b1_begin != b1_end) { // If block 1 is not empty, start there.
-                        m_current_iter = b1_begin;
-                        m_in_block1    = true;
+                    if (!b1.empty()) { // If block 1 is not empty, start there.
+                        m_current_ptr = b1.data();
+                        m_in_block1   = true;
                     } else { // Otherwise, start at block 2.
-                        m_current_iter = b2_begin;
-                        m_in_block1    = false;
+                        m_current_ptr = b2.data();
+                        m_in_block1   = false;
                     }
                 } else { // This is the end() sentinel iterator.
-                    m_current_iter = m_block2_end; // The end is always the end of block 2.
-                    m_in_block1    = false;
+                    m_current_ptr = b2.data() + b2.size();
+                    m_in_block1   = false;
                 }
             }
 
-            SpanIterator m_current_iter;
-            SpanIterator m_block1_end;
-            SpanIterator m_block2_begin;
-            SpanIterator m_block2_end;
-            bool m_in_block1 = false;
+            pointer m_current_ptr      = nullptr;
+            pointer m_block1_end_ptr   = nullptr;
+            pointer m_block2_begin_ptr = nullptr;
+            bool m_in_block1           = false;
 
             template<bool> friend class any_iterator; // Allow conversion access
         };
@@ -294,24 +286,16 @@ public:
 
         // --- Making ReadScope a C++20 Range (with const and non-const overloads) ---
         [[nodiscard]] iterator begin() {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+            return iterator(get_block1(), get_block2(), true);
         }
         [[nodiscard]] iterator end() {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+            return iterator(get_block1(), get_block2(), false);
         }
         [[nodiscard]] const_iterator begin() const {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return const_iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), true);
+            return const_iterator(get_block1(), get_block2(), true);
         }
         [[nodiscard]] const_iterator end() const {
-            auto b1 = get_block1();
-            auto b2 = get_block2();
-            return const_iterator(b1.begin(), b1.end(), b2.begin(), b2.end(), false);
+            return const_iterator(get_block1(), get_block2(), false);
         }
 
         // --- Block Accessors with const and non-const Overloads ---
