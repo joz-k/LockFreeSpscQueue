@@ -22,3 +22,8 @@ add_executable(stress_test stress_test.cpp)
 target_link_libraries(stress_test PRIVATE spsc_queue Threads::Threads)
 add_test(NAME StressTest COMMAND stress_test)
 
+# --- Test for Move Semantics ---
+add_executable(test_move_semantics test_move_semantics.cpp)
+target_link_libraries(test_move_semantics PRIVATE spsc_queue Threads::Threads)
+add_test(NAME MoveSemantics COMMAND test_move_semantics)
+
