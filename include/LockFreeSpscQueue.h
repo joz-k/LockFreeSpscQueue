@@ -172,14 +172,6 @@ public:
             }
         }
 
-        /**
-         * @brief Releases ownership of the transaction, preventing the destructor
-         * from automatically committing the write.
-         * @details This is an advanced feature used when another object, like a
-         *          WriteTransaction, needs to take over responsibility for the commit.
-         */
-        void release() noexcept { m_owner_queue = nullptr; }
-
         // This RAII object is move-only to ensure single ownership of a transaction.
         WriteScope(const WriteScope&) = delete;
         WriteScope& operator=(const WriteScope&) = delete;
@@ -551,38 +543,13 @@ public:
      */
     [[nodiscard]] WriteScope prepare_write(size_t num_items_to_write)
     {
-        // "Fast path" calculation using the producer's local cache of the read
-        // pointer (which involves no cross-core communication) and `write_pos`.
-        // Relaxed load is safe for the `write_pos` index as this is the only
-        // thread that modifies it.
-        const size_t current_write_pos
-                        = m_producer_data.write_pos.load(std::memory_order_relaxed);
-        size_t available_space
-                        = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
-
-        // Note: The subtraction `current_write_pos - cached_read_pos`
-        // calculates the number of items currently in the queue, even when the
-        // 64-bit indices wrap around, due to the defined behavior of unsigned
-        // integer arithmetic.
-
-        if (available_space < num_items_to_write) {
-            // "Slow path": our cache is out of date.
-            // Perform an expensive acquire load to get the true position from the consumer.
-            m_producer_data.cached_read_pos
-                        = m_consumer_data.read_pos.load(std::memory_order_acquire);
-            // Recalculate available space with the updated value.
-            available_space
-                        = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
+        auto [start_index, block_size1, start_index2, block_size2]
+                                                    = get_write_reservation(num_items_to_write);
+        if (block_size1 + block_size2 == 0) {
+            return { 0, 0, 0, 0, nullptr };
         }
 
-        const size_t items_to_write = std::min(num_items_to_write, available_space);
-        if (items_to_write == 0) { return {0, 0, 0, 0, nullptr}; }
-
-        const size_t start_index  = current_write_pos & m_capacity_mask;
-        const size_t space_to_end = m_capacity - start_index;
-        const size_t block_size1  = std::min(items_to_write, space_to_end);
-        const size_t block_size2  = items_to_write - block_size1;
-        return {start_index, block_size1, 0, block_size2, this};
+        return { start_index, block_size1, start_index2, block_size2, this };
     }
 
     /**
@@ -632,19 +599,20 @@ public:
      */
     [[nodiscard]] std::optional<WriteTransaction> try_start_write(size_t num_items)
     {
-        auto scope = prepare_write(num_items);
-        if (scope.get_items_written() == 0) {
+        auto [start_index, block_size1, start_index2, block_size2]
+                                                            = get_write_reservation(num_items);
+
+        const size_t items_reserved = block_size1 + block_size2;
+        if (items_reserved == 0) {
             return std::nullopt;
         }
 
-        // Create the transaction using the spans from the scope.
-        auto transaction = WriteTransaction(this, scope.get_block1(), scope.get_block2());
+        auto block1 = m_buffer.subspan(start_index, block_size1);
+        auto block2 = (block_size2 > 0)
+                    ? m_buffer.subspan(start_index2, block_size2)
+                    : std::span<T>{};
 
-        // Release the scope so its destructor does nothing.
-        // The WriteTransaction is now solely responsible for the final commit.
-        scope.release();
-
-        return transaction;
+        return WriteTransaction(this, block1, block2);
     }
 
     /** @brief Returns the total capacity of the queue (the size of the buffer). */
@@ -728,6 +696,58 @@ public:
 private:
     friend struct WriteScope;
     friend struct ReadScope;
+
+    /**
+     * @brief Performs the core logic to reserve a contiguous block of space for writing.
+     * @details This is a private helper that centralizes the write reservation logic,
+     *          which is shared by `prepare_write` and `try_start_write`. It implements
+     *          the "fast path/slow path" optimization by first checking against the
+     *          producer's cached `read_pos` and only performing an expensive `acquire`
+     *          load on the consumer's true `read_pos` when necessary.
+     * @note This function is pure and does not modify the queue's state. It only
+     *       calculates and returns the potential reservation parameters. The actual
+     *       commit is handled by the RAII objects created by the public API methods.
+     * @param num_items The desired number of items to reserve space for.
+     * @return A tuple containing {start_index1, block_size1, start_index2, block_size2}.
+     *         If no space is available, all values in the tuple will be zero.
+     */
+    [[nodiscard]] std::tuple<size_t, size_t, size_t, size_t>
+                                        get_write_reservation(size_t num_items_to_write) noexcept
+    {
+        // "Fast path" calculation using the producer's local cache of the read
+        // pointer (which involves no cross-core communication) and `write_pos`.
+        // Relaxed load is safe for the `write_pos` index as this is the only
+        // thread that modifies it.
+        const size_t current_write_pos
+                            = m_producer_data.write_pos.load(std::memory_order_relaxed);
+        size_t available_space
+                            = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
+
+        // Note: The subtraction `current_write_pos - cached_read_pos`
+        // calculates the number of items currently in the queue, even when the
+        // 64-bit indices wrap around, due to the defined behavior of unsigned
+        // integer arithmetic.
+
+        if (available_space < num_items_to_write) {
+            // "Slow path": our cache is out of date.
+            // Perform an expensive acquire load to get the true position from the consumer.
+            m_producer_data.cached_read_pos
+                            = m_consumer_data.read_pos.load(std::memory_order_acquire);
+            available_space = m_capacity - (current_write_pos - m_producer_data.cached_read_pos);
+        }
+
+        const size_t items_to_reserve = std::min(num_items_to_write, available_space);
+
+        if (items_to_reserve == 0) {
+            return { 0, 0, 0, 0 };
+        }
+
+        const size_t start_index  = current_write_pos & m_capacity_mask;
+        const size_t space_to_end = m_capacity - start_index;
+        const size_t block_size1  = std::min(items_to_reserve, space_to_end);
+        const size_t block_size2  = items_to_reserve - block_size1;
+        return { start_index, block_size1, 0, block_size2 };
+    }
 
     void commit_write(size_t num_items_written) noexcept
     {
