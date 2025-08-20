@@ -698,16 +698,18 @@ private:
     friend struct ReadScope;
 
     /**
-     * @brief Performs the core logic to reserve a contiguous block of space for writing.
+     * @brief Performs the core logic to calculate a reservation for a write operation.
      * @details This is a private helper that centralizes the write reservation logic,
      *          which is shared by `prepare_write` and `try_start_write`. It implements
      *          the "fast path/slow path" optimization by first checking against the
      *          producer's cached `read_pos` and only performing an expensive `acquire`
      *          load on the consumer's true `read_pos` when necessary.
-     * @note This function is pure and does not modify the queue's state. It only
-     *       calculates and returns the potential reservation parameters. The actual
-     *       commit is handled by the RAII objects created by the public API methods.
-     * @param num_items The desired number of items to reserve space for.
+     * @note This function is responsible only for the calculation of a reservation;
+     *       it does not perform the final "commit" that makes the space available. While
+     *       it may update the producer's internal `cached_read_pos` as a performance
+     *       optimization, it never modifies the queue's main `write_pos` index.
+     *       The actual commit (advancing `write_pos`) is the exclusive responsibility
+     *       of the RAII scope objects (`WriteScope`, `WriteTransaction`).
      * @return A tuple containing {start_index1, block_size1, start_index2, block_size2}.
      *         If no space is available, all values in the tuple will be zero.
      */
