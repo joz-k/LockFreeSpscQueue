@@ -55,7 +55,7 @@ The process involves three steps:
 
 struct MyData {
     std::string s;
-    std.vector<int> v;
+    std::vector<int> v;
     MyData(const std::string& str, size_t n) : s(str), v(n) {}
 };
 
