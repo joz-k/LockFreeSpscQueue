@@ -43,7 +43,7 @@ This is the **highest-performance API** for producers that generate many individ
 The process involves three steps:
 1.  Start a transaction for a batch of items using `try_start_write()`.
 2.  If successful, use the transaction object's ultra-fast `try_emplace()` or `try_push()` methods to add items to the reserved space.
-3.  The transaction automatically commits the items that were successfully added when its `WriteTransaction` object is destroyed.
+3.  It tracks the number of successful pushes/emplaces. When the `WriteTransaction` object is destroyed, it automatically commits **exactly** that many items. Any unused portion of the initial reservation is simply ignored and made available for future writes.
 
 #### The `try_emplace` Method (Recommended for Complex Objects)
 
@@ -55,21 +55,33 @@ The process involves three steps:
 
 struct MyData {
     std::string s;
-    std::vector<int> v;
+    std.vector<int> v;
     MyData(const std::string& str, size_t n) : s(str), v(n) {}
 };
 
 void emplace_producer(LockFreeSpscQueue<MyData>& queue)
 {
     // Try to start a transaction for up to 16 items.
+    // This returns an optional; it will be empty if the queue is too full.
     if (auto transaction = queue.try_start_write(16))
     {
-        // We got a reservation! Emplace items directly into it.
-        // This is extremely fast, as there are no temporary MyData objects.
-        transaction->try_emplace("hello", 100);
-        transaction->try_emplace("world", 200);
+        // We have a reservation. Its actual capacity might be less than 16.
+        // We should always check the return value of try_emplace in robust code.
+        
+        // Attempt to emplace the first item.
+        bool success1 = transaction->try_emplace("hello", 100);
 
-        // 'transaction' automatically commits the 2 new items when it goes out of scope.
+        // We can chain calls, but the second will only succeed if the first did
+        // and the transaction's capacity was at least 2.
+        bool success2 = false;
+        if (success1) {
+            success2 = transaction->try_emplace("world", 200);
+        }
+
+        // The transaction now knows whether 0, 1, or 2 items were added.
+        // When it is destroyed here, it will commit the correct amount automatically.
+        // If the reservation was for only 1 slot, success2 will be false, and only
+        // the first item ("hello") will be committed.
     }
 }
 ```
