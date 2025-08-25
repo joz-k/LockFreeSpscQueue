@@ -67,7 +67,7 @@ void emplace_producer(LockFreeSpscQueue<MyData>& queue)
     {
         // We have a reservation. Its actual capacity might be less than 16.
         // We should always check the return value of try_emplace in robust code.
-        
+
         // Attempt to emplace the first item.
         bool success1 = transaction->try_emplace("hello", 100);
 
@@ -91,7 +91,7 @@ void emplace_producer(LockFreeSpscQueue<MyData>& queue)
 `try_push` is ideal for trivial types (like `int` or `float`) or when you already have an existing object that you want to move into the queue.
 
 ```cpp
-void high_frequency_producer(LockFreeSpscQueue<Message>& queue)
+void high_frequency_producer(LockFreeSpscQueue<int>& queue)
 {
     int next_item = 0;
 
@@ -195,7 +195,7 @@ void low_level_batch_producer(LockFreeSpscQueue<Message>& queue,
 }
 ```
 
-Note: This low-level example performs a single write attempt. In a real-world scenario, you would typically place this logic inside a loop (similar to the try_write example) to handle cases where the queue is initially full and to ensure all data is eventually sent.
+Note: This low-level example performs a single write attempt. In a real-world scenario, you would typically place this logic inside a loop (similar to the try\_write example) to handle cases where the queue is initially full and to ensure all data is eventually sent.
 
 ---
 
