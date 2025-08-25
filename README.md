@@ -229,6 +229,8 @@ This method keeps the library separate from your own source code and makes updat
     ```sh
     # From the root of your project
     git submodule add https://github.com/joz-k/LockFreeSpscQueue.git external/LockFreeSpscQueue
+    # Pin the checkout to a specific version, usually the latest one
+    cd external/LockFreeSpscQueue && git checkout v1.0.3
     ```
 
 2.  **In your project's main `CMakeLists.txt`, add the following:**
