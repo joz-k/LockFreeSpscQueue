@@ -87,7 +87,7 @@ static void BM_ThisQueue_SingleItem_Write256(benchmark::State& state) {
         while (!(   consumer_should_stop.load(std::memory_order_relaxed)
                  && queue.get_num_items_ready() == 0))
         {
-            // Always read much items from the queue as they are ready
+            // Always read as many items from the queue as they are ready
             const size_t items_read = queue.try_read(QueueCapacity, [&](auto b1, auto b2) {
                 for (const auto& item : b1) {
                     if (item != random_data[(received_count++) % RandomDataSize]) {
