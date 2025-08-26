@@ -66,7 +66,7 @@ Note: If there is no need to split the read or write operation into two chunks, 
 > Please refer to the "[Examples](examples/README.md)" section to explore more API options, including the
 > new [Range-Based API](examples/README.md#4-range-based-api-stdranges), which completely abstracs away the two-block nature of the circular buffer.
 
-Here is a complete, minimal example demonstrating the recommended batch-oriented usage. A producer thread sends several small batches of integers, and a consumer thread reads them as they become available. 
+Here is a complete, minimal example demonstrating the recommended batch-oriented usage. A producer thread sends several small batches of integers, and a consumer thread reads them as they become available ([Run](https://godbolt.org/z/zGKdaYroc)): 
 
 ```cpp
 #include "LockFreeSpscQueue.h"
