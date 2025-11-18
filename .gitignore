@@ -24,3 +24,5 @@ CMakeLists.txt.user
 
 # Other
 .DS_Store
+.cache
+compile_commands.json
