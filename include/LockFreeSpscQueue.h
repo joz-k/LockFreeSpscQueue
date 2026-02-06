@@ -1,3 +1,6 @@
+// "LockFreeSpscQueue.h"
+// Version:v1.0.3
+
 // MIT License
 //
 // Copyright (c) 2025 Jozef Kosoru
