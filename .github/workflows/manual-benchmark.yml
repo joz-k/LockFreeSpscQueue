@@ -51,9 +51,9 @@ jobs:
         run: |
           echo "==================== Hardware Information ===================="
           echo "--- CPU ---"
-          wmic cpu get Name, NumberOfCores, NumberOfLogicalProcessors /format:list
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors
           echo "--- Memory ---"
-          wmic ComputerSystem get TotalPhysicalMemory /format:list
+          (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
           echo "=========================================================="
 
       # Step 2: Check out the specific Git ref provided by the user.
