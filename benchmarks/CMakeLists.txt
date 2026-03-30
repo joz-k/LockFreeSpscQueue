@@ -7,7 +7,7 @@ include(FetchContent)
 FetchContent_Declare(
     GoogleBenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG        v1.8.3 # Using a specific tag ensures stability
+    GIT_TAG        v1.9.5 # Using a specific tag ensures stability
 )
 
 # Disable building of Google Benchmark's own internal tests. We only need the library.
