@@ -555,7 +555,7 @@ public:
         size_t available_items
                         = m_consumer_data.cached_write_pos - current_read_pos;
 
-        if (available_items < num_items_to_read) {
+        if (available_items < num_items_to_read) [[unlikely]] {
             // "Slow path": our cache is out of date.
             // Perform an expensive acquire load to get the true position from the producer.
             m_consumer_data.cached_write_pos
@@ -713,7 +713,7 @@ private:
         // 64-bit indices wrap around, due to the defined behavior of unsigned
         // integer arithmetic.
 
-        if (available_space < num_items_to_write) {
+        if (available_space < num_items_to_write) [[unlikely]] {
             // "Slow path": our cache is out of date.
             // Perform an expensive acquire load to get the true position from the consumer.
             m_producer_data.cached_read_pos
